@@ -4,7 +4,6 @@ function now(){return new Date().toISOString()}
 function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
 
-// Data variables (loaded from Supabase on init)
 var sites=[];
 var emps=[];
 var res=[];
@@ -13,28 +12,26 @@ var notifs=[];
 var assigns=[];
 var unlockLog=[];
 var sops=[];
+var adminPass='admin'; // loaded from Supabase on init
 
 var user=null,page='login',activeSop=null,assessAns={},assessStarted=false,assessDone=false,assessResult=null;
 var qmSopId=null,qmMode='add',qmQt='',qmOpts=['','','',''],qmCor=0,qmBulk='',qmEi=null;
 var adminSiteF='all',adminSopF='all',adminEmpF='';
 
-// Load one key from Supabase
 async function cloudLoad(key, fallback) {
     try {
-        var { data, error } = await sb.from('app_data').select('value').eq('key', key).single();
-        if (error || !data) return fallback;
-        return data.value;
+        var r = await sb.from('app_data').select('value').eq('key', key).single();
+        if (r.error || !r.data) return fallback;
+        return r.data.value;
     } catch(e) { return fallback; }
 }
 
-// Save one key to Supabase
 async function cloudSave(key, value) {
     try {
         await sb.from('app_data').upsert({ key: key, value: value, updated_at: new Date().toISOString() });
     } catch(e) { console.error('Save failed for ' + key, e); }
 }
 
-// Save all data (called after every change)
 function save() {
     cloudSave('res', res);
     cloudSave('prog', prog);
@@ -46,7 +43,6 @@ function save() {
     cloudSave('unlock', unlockLog);
 }
 
-// Initialize - load all data from Supabase
 async function init() {
     try {
         sites = await cloudLoad('sites', ['Thutse Mining','Malekaskraal Vanadium','Head Office']);
@@ -57,10 +53,11 @@ async function init() {
         assigns = await cloudLoad('assigns', []);
         unlockLog = await cloudLoad('unlock', []);
         sops = await cloudLoad('sops', []);
+        adminPass = await cloudLoad('admin_password', 'admin');
         render();
     } catch(e) {
         console.error('Failed to load data:', e);
-        document.getElementById('app').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Arial;background:#243034;color:#fff"><h1 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">One <span style="color:#FBB227">Mining</span></h1><p style="color:#EF4444">Failed to connect to database. Please check your internet connection and try again.</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 24px;background:#FBB227;border:none;border-radius:8px;font-weight:600;cursor:pointer">Retry</button></div>';
+        document.getElementById('app').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Arial;background:#243034;color:#fff"><h1 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">One <span style="color:#FBB227">Mining</span></h1><p style="color:#EF4444">Failed to connect. Check your internet and try again.</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 24px;background:#FBB227;border:none;border-radius:8px;font-weight:600;cursor:pointer">Retry</button></div>';
     }
 }
 
@@ -112,7 +109,7 @@ return'<div class="login-bg"><div class="login-card"><div class="login-logo"><h1
 '<div class="fg"><label id="login-lbl">PIN</label><input type="password" id="login-pin" onkeydown="if(event.key===\'Enter\')doLogin()"></div>'+
 '<div id="login-err" style="color:#EF4444;font-size:.82rem;margin-bottom:12px"></div>'+
 '<button class="btn btn-p" onclick="doLogin()">Sign In</button>'+
-'<p style="font-size:.74rem;color:#6B7280;margin-top:14px;text-align:center">Demo: <b>OM001-OM005</b> PIN <b>1234</b> | Admin: <b>admin</b></p></div></div>';
+'<p style="font-size:.74rem;color:#6B7280;margin-top:14px;text-align:center">One Mining Training Management System</p></div></div>';
 }
 
 // === EMPLOYEE DASHBOARD ===
@@ -464,7 +461,7 @@ return h+'</tbody></table></div></div></div></div>';
 }
 // === ACTION FUNCTIONS ===
 function doLogin(){var mode=document.getElementById('login-mode').value;var pin=document.getElementById('login-pin').value;
-if(mode==='admin'){if(pin==='admin'){user={id:'ADMIN',name:'Administrator',role:'admin'};page='dashboard';render();return}document.getElementById('login-err').textContent='Invalid credentials';return}
+if(mode==='admin'){if(pin===adminPass){user={id:'ADMIN',name:'Administrator',role:'admin'};page='dashboard';render();return}document.getElementById('login-err').textContent='Invalid credentials';return}
 var eid=document.getElementById('login-eid').value;var emp=emps.find(function(e){return e.id.toUpperCase()===eid.toUpperCase()});
 if(!emp){document.getElementById('login-err').textContent='Employee not found';return}
 if(pin!==emp.pin){document.getElementById('login-err').textContent='Incorrect PIN';return}
@@ -504,7 +501,7 @@ function uploadDoc(sid){var inp=document.createElement('input');inp.type='file';
     sop.docUrl=urlData.publicUrl;sop.docName=f.name;save();render();alert('Document uploaded!');
 };inp.click()}
 function uploadVid(sid){var inp=document.createElement('input');inp.type='file';inp.accept='video/*';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;
-    if(f.size>100*1024*1024){alert('Max 100MB. For larger videos, upload to YouTube and paste the link.');return}
+    if(f.size>100*1024*1024){alert('Max 100MB. For larger videos, upload to YouTube and embed the link.');return}
     var path='sop-vids/'+sid+'_'+Date.now()+'_'+f.name;
     var {data,error}=await sb.storage.from('lms-files').upload(path,f);
     if(error){alert('Upload failed: '+error.message);return}
@@ -666,5 +663,5 @@ w.document.write('</tbody></table>');}
 w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training Management System</p><p>Generated '+fd(now())+' | Confidential — For compliance use only</p></div></body></html>');
 w.document.close();setTimeout(function(){w.print()},500);}
 
-// Start the app
 init();
+
