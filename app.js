@@ -245,7 +245,7 @@ h+='<div class="sc"><div class="l">1. Read SOP</div><div style="margin-top:6px">
 h+='<div class="sc"><div class="l">2. Watch Video</div><div style="margin-top:6px">'+(pr.vw?bg('Done','green'):bg('Pending','gray'))+'</div></div>';
 if(!s.interactiveNA){h+='<div class="sc"><div class="l">3. Interactive Training</div><div style="margin-top:6px">'+(pr.ia?bg('Done','green'):bg('Pending','gray'))+'</div></div>';
 h+='<div class="sc"><div class="l">4. Assessment</div><div style="margin-top:6px">'+(ps?bg('Passed','green'):lk?bg('Locked','red'):bg(att.length+'/3','gold'))+'</div></div>';}
-else{h+='<div class="sc"><div class="l">3. Assessment</div><div style="margin-top:6px">'+(ps?bg('Passed','green'):lk?bg('Locked','red'):bg(att.length+'/3','gold'))+'</div></div>';}}
+else{h+='<div class="sc"><div class="l">3. Assessment</div><div style="margin-top:6px">'+(ps?bg('Passed','green'):lk?bg('Locked','red'):bg(att.length+'/3','gold'))+'</div></div>';}
 h+='</div>';}
 h+='<div class="tabs"><div class="tab'+(tab==='sop'?' a':'')+'" onclick="setSopTab(\'sop\')">SOP Document</div>';
 h+='<div class="tab'+(tab==='vid'?' a':'')+'" onclick="setSopTab(\'vid\')">Video</div>';
@@ -717,5 +717,3 @@ w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training M
 w.document.close();setTimeout(function(){w.print()},500);}
 
 init();
-
-
