@@ -4,6 +4,7 @@ function now(){return new Date().toISOString()}
 function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
 
+// Data variables (loaded from Supabase on init)
 var sites=[];
 var emps=[];
 var res=[];
@@ -12,26 +13,30 @@ var notifs=[];
 var assigns=[];
 var unlockLog=[];
 var sops=[];
-var adminPass='admin'; // loaded from Supabase on init
 
 var user=null,page='login',activeSop=null,assessAns={},assessStarted=false,assessDone=false,assessResult=null;
 var qmSopId=null,qmMode='add',qmQt='',qmOpts=['','','',''],qmCor=0,qmBulk='',qmEi=null;
 var adminSiteF='all',adminSopF='all',adminEmpF='';
+var adminPass='admin';
+var editSopId=null;
 
+// Load one key from Supabase
 async function cloudLoad(key, fallback) {
     try {
-        var r = await sb.from('app_data').select('value').eq('key', key).single();
-        if (r.error || !r.data) return fallback;
-        return r.data.value;
+        var { data, error } = await sb.from('app_data').select('value').eq('key', key).single();
+        if (error || !data) return fallback;
+        return data.value;
     } catch(e) { return fallback; }
 }
 
+// Save one key to Supabase
 async function cloudSave(key, value) {
     try {
         await sb.from('app_data').upsert({ key: key, value: value, updated_at: new Date().toISOString() });
     } catch(e) { console.error('Save failed for ' + key, e); }
 }
 
+// Save all data (called after every change)
 function save() {
     cloudSave('res', res);
     cloudSave('prog', prog);
@@ -43,6 +48,7 @@ function save() {
     cloudSave('unlock', unlockLog);
 }
 
+// Initialize - load all data from Supabase
 async function init() {
     try {
         sites = await cloudLoad('sites', ['Thutse Mining','Malekaskraal Vanadium','Head Office']);
@@ -57,7 +63,7 @@ async function init() {
         render();
     } catch(e) {
         console.error('Failed to load data:', e);
-        document.getElementById('app').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Arial;background:#243034;color:#fff"><h1 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">One <span style="color:#FBB227">Mining</span></h1><p style="color:#EF4444">Failed to connect. Check your internet and try again.</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 24px;background:#FBB227;border:none;border-radius:8px;font-weight:600;cursor:pointer">Retry</button></div>';
+        document.getElementById('app').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Arial;background:#243034;color:#fff"><h1 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">One <span style="color:#FBB227">Mining</span></h1><p style="color:#EF4444">Failed to connect to database. Please check your internet connection and try again.</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 24px;background:#FBB227;border:none;border-radius:8px;font-weight:600;cursor:pointer">Retry</button></div>';
     }
 }
 
@@ -109,7 +115,7 @@ return'<div class="login-bg"><div class="login-card"><div class="login-logo"><h1
 '<div class="fg"><label id="login-lbl">PIN</label><input type="password" id="login-pin" onkeydown="if(event.key===\'Enter\')doLogin()"></div>'+
 '<div id="login-err" style="color:#EF4444;font-size:.82rem;margin-bottom:12px"></div>'+
 '<button class="btn btn-p" onclick="doLogin()">Sign In</button>'+
-'<p style="font-size:.74rem;color:#6B7280;margin-top:14px;text-align:center">One Mining Training Management System</p></div></div>';
+'<p style="font-size:.74rem;color:#6B7280;margin-top:14px;text-align:center">Employee: Use your ID and PIN</p></div></div>';
 }
 
 // === EMPLOYEE DASHBOARD ===
@@ -227,16 +233,23 @@ h+='</div></div>';return h;
 // === SOP VIEWER ===
 function renderSopView(){
 var s=activeSop,isA=user.role==='admin';
-var pr=!isA?(prog[user.id+'_'+s.code]||{}):{sr:true,vw:true};
+var pr=!isA?(prog[user.id+'_'+s.code]||{}):{sr:true,vw:true,ia:true};
 var ps=!isA&&hasPassed(user.id,s.code),lk=!isA&&isLocked(user.id,s.code),att=!isA?getAtt(user.id,s.code):[];
 var tabV=document.getElementById('sop-tab-val');var tab=tabV?tabV.value:'sop';
 var h='<div class="topbar"><div style="display:flex;align-items:center;gap:14px"><button class="btn btn-o btn-sm" onclick="closeSop()">← Back</button><div><h1>'+s.title+'</h1><span style="font-size:.76rem;color:#6B7280">'+s.code+' · '+s.rev+' · '+s.site+'</span></div></div></div>';
 h+='<div class="pc"><input type="hidden" id="sop-tab-val" value="'+tab+'">';
-if(!isA){h+='<div class="sg"><div class="sc"><div class="l">1. Read SOP</div><div style="margin-top:6px">'+(pr.sr?bg('Done','green'):bg('Pending','gray'))+'</div></div>';
+if(!isA){
+var numSteps=s.interactiveNA?3:4;
+h+='<div class="sg">';
+h+='<div class="sc"><div class="l">1. Read SOP</div><div style="margin-top:6px">'+(pr.sr?bg('Done','green'):bg('Pending','gray'))+'</div></div>';
 h+='<div class="sc"><div class="l">2. Watch Video</div><div style="margin-top:6px">'+(pr.vw?bg('Done','green'):bg('Pending','gray'))+'</div></div>';
-h+='<div class="sc"><div class="l">3. Assessment</div><div style="margin-top:6px">'+(ps?bg('Passed','green'):lk?bg('Locked','red'):bg(att.length+'/3','gold'))+'</div></div></div>';}
+if(!s.interactiveNA){h+='<div class="sc"><div class="l">3. Interactive Training</div><div style="margin-top:6px">'+(pr.ia?bg('Done','green'):bg('Pending','gray'))+'</div></div>';
+h+='<div class="sc"><div class="l">4. Assessment</div><div style="margin-top:6px">'+(ps?bg('Passed','green'):lk?bg('Locked','red'):bg(att.length+'/3','gold'))+'</div></div>';}
+else{h+='<div class="sc"><div class="l">3. Assessment</div><div style="margin-top:6px">'+(ps?bg('Passed','green'):lk?bg('Locked','red'):bg(att.length+'/3','gold'))+'</div></div>';}}
+h+='</div>';}
 h+='<div class="tabs"><div class="tab'+(tab==='sop'?' a':'')+'" onclick="setSopTab(\'sop\')">SOP Document</div>';
 h+='<div class="tab'+(tab==='vid'?' a':'')+'" onclick="setSopTab(\'vid\')">Video</div>';
+if(!isA&&!s.interactiveNA){h+='<div class="tab'+(tab==='interactive'?' a':'')+'" onclick="setSopTab(\'interactive\')">Interactive</div>';}
 h+='<div class="tab'+(tab==='test'?' a':'')+'" onclick="setSopTab(\'test\')">Assessment ('+s.qs.length+')</div></div>';
 if(tab==='sop'){h+='<div style="max-width:860px;margin:0 auto">';
 if(s.docUrl)h+='<iframe src="'+s.docUrl+'" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
@@ -250,6 +263,12 @@ else h+='<div style="background:#000;border-radius:10px;aspect-ratio:16/9;displa
 if(!isA&&!pr.vw)h+='<div style="text-align:center"><button class="btn btn-p" style="width:auto;padding:12px 44px" onclick="markVid()">✓ I have watched the video</button></div>';
 if(!isA&&pr.vw)h+='<p style="text-align:center;color:#22C55E;font-weight:600">Completed '+fd(pr.vwd)+'</p>';
 h+='</div>';}
+if(!isA&&!s.interactiveNA&&tab==='interactive'){h+='<div style="max-width:860px;margin:0 auto">';
+if(s.interactiveUrl)h+='<iframe src="'+s.interactiveUrl+'" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
+else h+='<div class="card"><div class="cb" style="text-align:center;padding:28px;color:#6B7280">No interactive assessment uploaded yet.</div></div>';
+if(!pr.ia)h+='<div style="text-align:center;margin-top:16px"><button class="btn btn-p" style="width:auto;padding:12px 44px" onclick="markInteractive()">✓ I have completed the interactive training</button></div>';
+if(pr.ia)h+='<p style="text-align:center;margin-top:12px;color:#22C55E;font-weight:600">Completed '+fd(pr.iad)+'</p>';
+h+='</div>';}
 if(tab==='test')h+=renderAssess(s,isA,pr,ps,lk,att);
 h+='</div>';return h;
 }
@@ -261,8 +280,8 @@ return h+'</tbody></table></div></div></div>';}
 if(!s.qs.length)return'<div class="card"><div class="cb" style="text-align:center;padding:28px;color:#6B7280">No assessment yet.</div></div>';
 if(ps)return'<div class="card"><div class="cb" style="text-align:center;padding:40px"><div class="ri ps">✓</div><h2 style="color:#22C55E">Passed</h2><p style="color:#6B7280;margin-top:8px">Training module completed.</p><button class="btn btn-p" style="width:auto;margin-top:16px" onclick="dlProofEmp(\''+user.id+'\',\''+s.code+'\')">📥 Download Proof</button></div></div>';
 if(lk)return'<div class="card"><div class="cb" style="text-align:center;padding:40px"><div class="ri fl">✕</div><h2 style="color:#EF4444">Locked</h2><p style="color:#6B7280;margin-top:8px">3 attempts used. Contact your administrator for assistance.</p></div></div>';
-if(!pr.sr||!pr.vw){
-var need=[];if(!pr.sr)need.push('read the SOP');if(!pr.vw)need.push('watch the video');
+if(!pr.sr||!pr.vw||(s.interactiveNA===false&&!pr.ia)){
+var need=[];if(!pr.sr)need.push('read the SOP');if(!pr.vw)need.push('watch the video');if(s.interactiveNA===false&&!pr.ia)need.push('complete the interactive training');
 return'<div class="card"><div class="cb" style="text-align:center;padding:28px;color:#6B7280">You must <b>'+need.join('</b> and <b>')+'</b> before taking the assessment.</div></div>';}
 if(assessDone&&assessResult){var r=assessResult;
 var h='<div class="card"><div class="cb" style="text-align:center;padding:40px"><div class="ri '+(r.pass?'ps':'fl')+'">'+(r.pass?'✓':'✕')+'</div>';
@@ -294,51 +313,21 @@ return h+'</tbody></table></div></div></div>';
 }
 // === ASSIGN TRAINING (ADMIN) ===
 function renderAssign(){
-var h='<div class="topbar"><h1>Assign Training</h1></div><div class="pc">';
-// Assign form
-h+='<div class="card"><div class="ch"><h3>Assign Training to Employees</h3></div><div class="cb">';
-h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
-h+='<div class="fg"><label>Assign To</label><select id="asgn-mode" onchange="document.getElementById(\'asgn-emp-row\').style.display=this.value===\'individual\'?\'block\':\'none\';document.getElementById(\'asgn-site-row\').style.display=this.value===\'site\'?\'block\':\'none\';document.getElementById(\'asgn-dept-row\').style.display=this.value===\'dept\'?\'block\':\'none\'"><option value="individual">Individual Employee</option><option value="site">All at Site</option><option value="dept">All in Department</option></select></div>';
-h+='<div class="fg"><label>Training Course</label><select id="asgn-sop"><option value="">Select SOP...</option>';
-sops.forEach(function(s){h+='<option value="'+s.code+'">'+s.code+' — '+s.title+'</option>'});
-h+='</select></div></div>';
-h+='<div id="asgn-emp-row" class="fg"><label>Employee</label><select id="asgn-emp"><option value="">Select...</option>';
-emps.forEach(function(e){h+='<option value="'+e.id+'">'+e.id+' — '+e.name+' ('+e.site+')</option>'});
-h+='</select></div>';
-h+='<div id="asgn-site-row" class="fg hide"><label>Site</label><select id="asgn-site"><option value="">Select...</option>';
-sites.forEach(function(s){h+='<option>'+s+'</option>'});
-h+='</select></div>';
-h+='<div id="asgn-dept-row" class="fg hide"><label>Department</label><input id="asgn-dept" placeholder="e.g. Processing"></div>';
-h+='<div class="fg"><label>Order / Sequence (lower = first)</label><input id="asgn-order" type="number" value="'+(assigns.length+1)+'" min="1"></div>';
-h+='<button class="btn btn-p" style="width:auto" onclick="doAssign()">Assign Training</button>';
-h+='</div></div>';
-// Current assignments
-h+='<div class="card"><div class="ch"><h3>Current Assignments ('+assigns.length+')</h3></div><div class="cb">';
-if(!assigns.length)h+='<p style="text-align:center;color:#6B7280;padding:20px">No assignments yet.</p>';
-else{
-h+='<div class="sf"><select id="asgn-filter-emp" onchange="render()"><option value="all">All Employees</option>';
-emps.forEach(function(e){h+='<option value="'+e.id+'">'+e.id+' — '+e.name+'</option>'});
-h+='</select><select id="asgn-filter-site" onchange="render()"><option value="all">All Sites</option>';
-sites.forEach(function(s){h+='<option>'+s+'</option>'});
-h+='</select></div>';
-var fe=document.getElementById('asgn-filter-emp');var fs2=document.getElementById('asgn-filter-site');
-var fEmp=fe?fe.value:'all';var fSite=fs2?fs2.value:'all';
-var fa=assigns.filter(function(a){
-var emp=emps.find(function(e){return e.id===a.eid});
-return(fEmp==='all'||a.eid===fEmp)&&(fSite==='all'||(emp&&emp.site===fSite));
-}).sort(function(a,b){return a.eid===b.eid?a.order-b.order:a.eid.localeCompare(b.eid)});
-h+='<div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>SOP Code</th><th>SOP Title</th><th>Order</th><th>Status</th><th>Assigned</th><th>Action</th></tr></thead><tbody>';
-fa.forEach(function(a){var emp=emps.find(function(e){return e.id===a.eid});var sop=sops.find(function(s){return s.code===a.sc});
-var st=getStatus(a.eid,a.sc);var stB=st==='passed'?bg('Completed','green'):st==='locked'?bg('Locked','red'):st==='progress'?bg('In Progress','gold'):bg('Not Started','gray');
-h+='<tr><td style="font-weight:600">'+(emp?emp.name:a.eid)+'</td><td>'+(emp?emp.site:'')+'</td><td style="color:#FBB227;font-weight:700">'+a.sc+'</td><td>'+(sop?sop.title:'')+'</td><td>'+a.order+'</td><td>'+stB+'</td><td>'+fd(a.dt)+'</td><td><button class="btn btn-d btn-sm" onclick="removeAssign(\''+a.eid+'\',\''+a.sc+'\')">Remove</button></td></tr>';
-});h+='</tbody></table></div>';}
-h+='</div></div></div>';return h;
+var h='<div class="topbar"><h1>Assign Training</h1><div style="display:flex;gap:8px"><button class="btn btn-p btn-sm" onclick="toggleBulkAssign()">📄 Bulk</button></div></div><div class="pc">';
+h+='<div id="bulk-assign-form" class="card hide"><div class="ch"><h3>Bulk Assign</h3></div><div class="cb"><div style="background:#f3f4f6;padding:14px;border-radius:8px;margin-bottom:16px;font-size:.82rem;font-family:monospace"><b>EmployeeID, SOPCode, SOPCode</b><br>OM001, OM-SOP-001, OM-SOP-002<br>OM002, OM-SOP-001</div>';
+h+='<div class="fg"><textarea id="bulk-assign-txt" rows="6" placeholder="Paste data..."></textarea></div>';
+h+='<div style="display:flex;gap:10px"><button class="btn btn-p" style="width:auto" onclick="importBulkAssign()">Import</button><button class="btn btn-o" style="width:auto" onclick="toggleBulkAssign()">Cancel</button></div></div></div>';
+h+='<div class="card"><div class="ch"><h3>Current Assignments</h3></div><div class="cb"><div class="tw"><table><thead><tr><th>Employee</th><th>ID</th><th>Site</th><th>Assigned SOPs</th><th>Status</th><th>Action</th></tr></thead><tbody>';
+emps.forEach(function(emp){var ea=getEmpAssigns(emp.id);h+='<tr><td style="font-weight:600">'+emp.name+'</td><td>'+emp.id+'</td><td>'+emp.site+'</td><td>';
+if(!ea.length)h+='<span style="color:#6B7280">None</span>';
+else ea.forEach(function(a,i){var sop=sops.find(function(s){return s.code===a.sc});h+=(i?', ':'')+a.sc+'<br><span style="font-size:.7rem;color:#6B7280">'+(sop?sop.title:'')+'</span>'});
+h+='</td><td>'+(ea.length?bg(ea.length+' active','blue'):'-')+'</td><td><button class="btn btn-o btn-sm" onclick="editAssign(\''+emp.id+'\')">Edit</button></td></tr>'});
+return h+'</tbody></table></div></div></div></div>';
 }
 
-// === MANAGE SOPs (ADMIN) ===
 function renderMSops(){
 var h='<div class="topbar"><h1>Manage SOPs</h1><button class="btn btn-p btn-sm" onclick="toggleAddSop()">+ Add SOP</button></div><div class="pc">';
-h+='<div id="add-sop-form" class="card hide"><div class="ch"><h3>New SOP</h3></div><div class="cb"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
+h+='<div id="add-sop-form" class="card hide"><div class="ch"><h3 id="sop-form-title">New SOP</h3></div><div class="cb"><input type="hidden" id="edit-sop-id" value=""><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
 h+='<div class="fg"><label>Code</label><input id="nsop-code" placeholder="OM-SOP-XXX-001"></div>';
 h+='<div class="fg"><label>Rev</label><input id="nsop-rev" value="Rev 1.0"></div>';
 h+='<div class="fg" style="grid-column:span 2"><label>Title</label><input id="nsop-title"></div>';
@@ -346,14 +335,15 @@ h+='<div class="fg" style="grid-column:span 2"><label>Description</label><textar
 h+='<div class="fg"><label>Category</label><input id="nsop-cat" placeholder="e.g. Safety"></div>';
 h+='<div class="fg"><label>Site</label><select id="nsop-site"><option>All Sites</option>';
 sites.forEach(function(s){h+='<option>'+s+'</option>'});
-h+='</select></div></div><div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="addSop()">Save</button><button class="btn btn-o" style="width:auto" onclick="toggleAddSop()">Cancel</button></div></div></div>';
-h+='<div class="card"><div class="tw"><table><thead><tr><th>Code</th><th>Title</th><th>Cat</th><th>Site</th><th>Doc</th><th>Video</th><th>Qs</th><th>Actions</th></tr></thead><tbody>';
+h+='</select></div><div class="fg" style="grid-column:span 2"><label><input type="checkbox" id="nsop-ia-na" checked> Interactive Assessment: Not Applicable</label></div></div><div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="addSop()">Save</button><button class="btn btn-o" style="width:auto" onclick="toggleAddSop()">Cancel</button></div></div></div>';
+h+='<div class="card"><div class="tw"><table><thead><tr><th>Code</th><th>Title</th><th>Cat</th><th>Site</th><th>Doc</th><th>Video</th><th>Interactive</th><th>Qs</th><th>Actions</th></tr></thead><tbody>';
 sops.forEach(function(s){
 h+='<tr><td style="font-weight:700;color:#FBB227">'+s.code+'</td><td>'+s.title+'</td><td>'+s.cat+'</td><td>'+s.site+'</td>';
 h+='<td>'+(s.docName?bg(s.docName,'green'):bg('None','gray'))+'</td>';
 h+='<td>'+(s.vidName?bg(s.vidName,'green'):bg('None','gray'))+'</td>';
+h+='<td>'+(s.interactiveNA?bg('N/A','gray'):s.interactiveName?bg(s.interactiveName,'green'):bg('None','gray'))+'</td>';
 h+='<td style="font-weight:700">'+s.qs.length+'</td>';
-h+='<td><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-p btn-sm" onclick="uploadDoc(\''+s.id+'\')">📄 Doc</button><button class="btn btn-p btn-sm" onclick="uploadVid(\''+s.id+'\')">🎬 Video</button><button class="btn btn-bl btn-sm" onclick="openQEditor(\''+s.id+'\',\'add\')">+ Q</button><button class="btn btn-s btn-sm" onclick="openQEditor(\''+s.id+'\',\'bulk\')">Bulk</button><button class="btn btn-o btn-sm" onclick="openSop(\''+s.id+'\')">View</button><button class="btn btn-d btn-sm" onclick="delSop(\''+s.id+'\')">Del</button></div></td></tr>'});
+h+='<td><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-p btn-sm" onclick="uploadDoc(\''+s.id+'\')">📄 Doc</button><button class="btn btn-p btn-sm" onclick="uploadVid(\''+s.id+'\')">🎬 Video</button><button class="btn btn-p btn-sm" onclick="uploadInteractive(\''+s.id+'\')">🎯 Interactive</button>'+(s.interactiveNA?'<button class="btn btn-gn btn-sm" onclick="toggleInteractiveNA(\''+s.id+'\')">Enable</button>':'<button class="btn btn-o btn-sm" onclick="toggleInteractiveNA(\''+s.id+'\')">N/A</button>')+'<button class="btn btn-bl btn-sm" onclick="openQEditor(\''+s.id+'\',\'add\')">+ Q</button><button class="btn btn-s btn-sm" onclick="openQEditor(\''+s.id+'\',\'bulk\')">Bulk</button><button class="btn btn-o btn-sm" onclick="editSop(\''+s.id+'\')">Edit</button><button class="btn btn-o btn-sm" onclick="openSop(\''+s.id+'\')">View</button><button class="btn btn-d btn-sm" onclick="delSop(\''+s.id+'\')">Del</button></div></td></tr>'});
 h+='</tbody></table></div></div>';
 if(qmSopId)h+=renderQEditor();
 return h+'</div>';
@@ -436,30 +426,32 @@ h+='<div class="spc" onclick="dlReport(\'full\')" style="text-align:center;paddi
 h+='<div class="spc" onclick="dlReport(\'site\')" style="text-align:center;padding:30px"><h4>📥 Site Training Summary</h4><p>Training status by site</p></div>';
 h+='<div class="spc" onclick="dlReport(\'course\')" style="text-align:center;padding:30px"><h4>📥 Course Completion Report</h4><p>Status per SOP/training course</p></div>';
 h+='</div>';
-// Quick stats
-var tp=res.filter(function(r){return r.pass}).length,tt=res.length,pr=tt?Math.round(tp/tt*100):0;
-h+='<div class="sg"><div class="sc gd"><div class="l">Total Assessments</div><div class="v">'+tt+'</div></div><div class="sc gn"><div class="l">Passed</div><div class="v">'+tp+'</div></div><div class="sc bl"><div class="l">Overall Pass Rate</div><div class="v">'+pr+'%</div></div></div>';
-h+='<div class="card"><div class="ch"><h3>Recent Results</h3></div><div class="cb"><div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>SOP</th><th>Score</th><th>Result</th><th>Attempt</th><th>Date</th></tr></thead><tbody>';
-res.slice().reverse().slice(0,15).forEach(function(r){var emp=emps.find(function(e){return e.id===r.eid});
-h+='<tr><td>'+(emp?emp.name:r.eid)+'</td><td>'+(emp?emp.site:'')+'</td><td style="font-weight:600">'+r.sc+'</td><td style="font-weight:700">'+r.pct+'%</td><td>'+bg(r.pass?'PASS':'FAIL',r.pass?'green':'red')+'</td><td>'+r.att+'/3</td><td>'+fd(r.dt)+'</td></tr>'});
-return h+'</tbody></table></div></div></div></div>';
-}
-
-function renderANot(){
-var h='<div class="topbar"><h1>Notifications</h1>'+(notifs.length?'<button class="btn btn-o btn-sm" onclick="clearNotifs()">Clear All</button>':'')+'</div><div class="pc">';
-if(!notifs.length)return h+'<div class="card"><div class="cb" style="text-align:center;color:#6B7280;padding:24px">No notifications.</div></div></div>';
-notifs.forEach(function(n){h+='<div class="card" style="border-left:4px solid '+(n.type==='pass'?'#22C55E':'#EF4444')+'"><div class="cb" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px"><div>'+bg(n.type==='pass'?'PASS':'FAIL',n.type==='pass'?'green':'red')+' <b>'+n.en+'</b> ('+n.es+') — <b>'+n.pct+'%</b> on <b>'+n.sc+'</b> — Attempt '+n.att+'/3</div><span style="font-size:.76rem;color:#6B7280">'+fd(n.dt)+'</span></div></div>'});
 return h+'</div>';
 }
-
-function renderSMgmt(){
-var h='<div class="topbar"><h1>Manage Sites</h1></div><div class="pc"><div class="card"><div class="ch"><h3>Operating Sites</h3></div><div class="cb">';
-h+='<div style="display:flex;gap:10px;margin-bottom:20px"><input id="new-site" placeholder="New site..." style="flex:1;padding:10px 14px;border:2px solid #e2e5e9;border-radius:8px" onkeydown="if(event.key===\'Enter\')addSite()"><button class="btn btn-p" style="width:auto" onclick="addSite()">+ Add</button></div>';
-h+='<div class="tw"><table><thead><tr><th>Site</th><th style="width:100px">Action</th></tr></thead><tbody>';
-sites.forEach(function(s){h+='<tr><td style="font-weight:600">'+s+'</td><td><button class="btn btn-d btn-sm" onclick="removeSite(\''+s+'\')">Remove</button></td></tr>'});
-return h+'</tbody></table></div></div></div></div>';
+// === NOTIFICATIONS ===
+function renderANot(){
+var h='<div class="topbar"><h1>Notifications</h1><button class="btn btn-o btn-sm" onclick="clearNotifs()">Clear All</button></div><div class="pc">';
+if(!notifs.length){return h+'<div class="card"><div class="cb" style="text-align:center;padding:24px;color:#6B7280">No notifications.</div></div></div>';}
+h+='<div>';
+notifs.forEach(function(n){
+h+='<div class="card" style="margin-bottom:12px"><div class="cb"><div style="display:flex;justify-content:space-between;align-items:start;gap:12px">';
+var ico=n.type==='pass'?'✓':'✕';var col=n.type==='pass'?'#22C55E':'#EF4444';
+h+='<div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;background:'+col+';color:#fff;border-radius:50%;font-weight:700">'+ico+'</span><b>'+n.en+'</b></div>';
+h+='<p style="font-size:.8rem;color:#6B7280;margin:4px 0">'+n.sc+' · Attempt '+n.att+'/3 · '+n.pct+'% · '+fd(n.dt)+'</p><p style="font-size:.8rem">'+(n.type==='pass'?'Passed with '+n.pct+'%':'Failed with '+n.pct+'% — needs '+Math.abs(80-n.pct)+'% more')+'</p></div>';
+h+='<button class="btn btn-o btn-sm" onclick="this.parentElement.parentElement.parentElement.style.display=\'none\'">✕</button></div></div></div>';
+});
+return h+'</div></div>';
 }
-// === ACTION FUNCTIONS ===
+// === MANAGE SITES ===
+function renderSMgmt(){
+var h='<div class="topbar"><h1>Manage Sites</h1><button class="btn btn-p btn-sm" onclick="toggleAddSite()">+ Add</button></div><div class="pc">';
+h+='<div id="add-site-form" class="card hide"><div class="ch"><h3>New Site</h3></div><div class="cb"><input id="nsite-name" placeholder="Site name"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="addSite()">Save</button><button class="btn btn-o" style="width:auto" onclick="toggleAddSite()">Cancel</button></div></div></div>';
+h+='<div class="card"><div class="tw"><table><thead><tr><th>Site Name</th><th>Employees</th><th>Action</th></tr></thead><tbody>';
+sites.forEach(function(s){var empC=emps.filter(function(e){return e.site===s}).length;h+='<tr><td style="font-weight:600">'+s+'</td><td>'+empC+'</td><td><button class="btn btn-d btn-sm" onclick="delSite(\''+s+'\')">Del</button></td></tr>'});
+return h+'</tbody></table></div></div></div>';
+}
+
+// === FUNCTION HANDLERS ===
 function doLogin(){var mode=document.getElementById('login-mode').value;var pin=document.getElementById('login-pin').value;
 if(mode==='admin'){if(pin===adminPass){user={id:'ADMIN',name:'Administrator',role:'admin'};page='dashboard';render();return}document.getElementById('login-err').textContent='Invalid credentials';return}
 var eid=document.getElementById('login-eid').value;var emp=emps.find(function(e){return e.id.toUpperCase()===eid.toUpperCase()});
@@ -473,6 +465,7 @@ function closeSop(){activeSop=null;render()}
 function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render()}
 function markRead(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=now();save();render()}
 function markVid(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].vw=true;prog[k].vwd=now();save();render()}
+function markInteractive(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].ia=true;prog[k].iad=now();save();render()}
 function startAssess(){assessStarted=true;assessAns={};render()}
 function resetForRetry(){
 var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].sr=false;prog[k].vw=false;
@@ -487,28 +480,73 @@ notifs.unshift({id:gid(),type:pass?'pass':'fail',en:emp?emp.name:user.id,es:emp?
 save();assessResult=r;assessDone=true;render();}
 
 // SOP management
-function toggleAddSop(){var el=document.getElementById('add-sop-form');if(el)el.classList.toggle('hide')}
+function toggleAddSop(){var el=document.getElementById('add-sop-form');if(el){el.classList.toggle('hide');if(!el.classList.contains('hide')){document.getElementById('edit-sop-id').value='';document.getElementById('sop-form-title').textContent='New SOP';editSopId=null;document.getElementById('nsop-code').value='';document.getElementById('nsop-rev').value='Rev 1.0';document.getElementById('nsop-title').value='';document.getElementById('nsop-desc').value='';document.getElementById('nsop-cat').value='';document.getElementById('nsop-ia-na').checked=true;}}}
+function editSop(id){
+var s=sops.find(function(x){return x.id===id});if(!s)return;
+editSopId=id;
+render();
+setTimeout(function(){
+var form=document.getElementById('add-sop-form');
+if(form)form.classList.remove('hide');
+document.getElementById('sop-form-title').textContent='Edit SOP: '+s.code;
+document.getElementById('edit-sop-id').value=id;
+document.getElementById('nsop-code').value=s.code;
+document.getElementById('nsop-rev').value=s.rev;
+document.getElementById('nsop-title').value=s.title;
+document.getElementById('nsop-desc').value=s.desc;
+document.getElementById('nsop-cat').value=s.cat;
+document.getElementById('nsop-site').value=s.site;
+document.getElementById('nsop-ia-na').checked=s.interactiveNA!==false;
+},50);
+}
 function addSop(){var code=document.getElementById('nsop-code').value,title=document.getElementById('nsop-title').value;
 if(!code||!title){alert('Code & title required');return}
-sops.push({id:gid(),code:code,rev:document.getElementById('nsop-rev').value||'Rev 1.0',title:title,desc:document.getElementById('nsop-desc').value||'',cat:document.getElementById('nsop-cat').value||'General',site:document.getElementById('nsop-site').value||'All Sites',html:'<h2>'+title+'</h2><p>Upload document.</p>',docUrl:null,docName:null,vidUrl:null,vidName:null,qs:[]});save();render();}
+var editId=document.getElementById('edit-sop-id').value;
+var iaNa=document.getElementById('nsop-ia-na').checked;
+if(editId){
+// EDIT existing SOP
+var sop=sops.find(function(s){return s.id===editId});
+if(sop){
+sop.code=code;
+sop.rev=document.getElementById('nsop-rev').value||'Rev 1.0';
+sop.title=title;
+sop.desc=document.getElementById('nsop-desc').value||'';
+sop.cat=document.getElementById('nsop-cat').value||'General';
+sop.site=document.getElementById('nsop-site').value||'All Sites';
+sop.interactiveNA=iaNa;
+if(iaNa){sop.interactiveUrl=null;sop.interactiveName=null;}
+}
+document.getElementById('edit-sop-id').value='';
+editSopId=null;
+} else {
+// ADD new SOP
+sops.push({id:gid(),code:code,rev:document.getElementById('nsop-rev').value||'Rev 1.0',title:title,desc:document.getElementById('nsop-desc').value||'',cat:document.getElementById('nsop-cat').value||'General',site:document.getElementById('nsop-site').value||'All Sites',html:'<h2>'+title+'</h2><p>Upload document.</p>',docUrl:null,docName:null,vidUrl:null,vidName:null,interactiveUrl:null,interactiveName:null,interactiveNA:iaNa,qs:[]});
+}
+save();render();
+}
 function delSop(id){sops=sops.filter(function(s){return s.id!==id});save();render()}
-function uploadDoc(sid){var inp=document.createElement('input');inp.type='file';inp.accept='.pdf';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;
-    var path='sop-docs/'+sid+'_'+Date.now()+'_'+f.name;
-    var {data,error}=await sb.storage.from('lms-files').upload(path,f);
-    if(error){alert('Upload failed: '+error.message);return}
-    var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);
-    var sop=sops.find(function(s){return s.id===sid});
-    sop.docUrl=urlData.publicUrl;sop.docName=f.name;save();render();alert('Document uploaded!');
-};inp.click()}
-function uploadVid(sid){var inp=document.createElement('input');inp.type='file';inp.accept='video/*';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;
-    if(f.size>100*1024*1024){alert('Max 100MB. For larger videos, upload to YouTube and embed the link.');return}
-    var path='sop-vids/'+sid+'_'+Date.now()+'_'+f.name;
-    var {data,error}=await sb.storage.from('lms-files').upload(path,f);
-    if(error){alert('Upload failed: '+error.message);return}
-    var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);
-    var sop=sops.find(function(s){return s.id===sid});
-    sop.vidUrl=urlData.publicUrl;sop.vidName=f.name;save();render();alert('Video uploaded!');
-};inp.click()}
+function uploadDoc(sid){var inp=document.createElement('input');inp.type='file';inp.accept='.pdf';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var path='sop-docs/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.docUrl=urlData.publicUrl;sop.docName=f.name;save();render();alert('Document uploaded!')};inp.click()}
+function uploadVid(sid){var inp=document.createElement('input');inp.type='file';inp.accept='video/*';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;if(f.size>100*1024*1024){alert('Max 100MB. For larger videos, upload to YouTube and paste the link.');return}var path='sop-vids/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.vidUrl=urlData.publicUrl;sop.vidName=f.name;save();render();alert('Video uploaded!')};inp.click()}
+function uploadInteractive(sid){
+var sop=sops.find(function(s){return s.id===sid});
+if(sop.interactiveNA){alert('Interactive assessment is set to N/A for this SOP. Change it to "Enabled" first.');return}
+var inp=document.createElement('input');inp.type='file';inp.accept='.html';
+inp.onchange=async function(e){
+var f=e.target.files[0];if(!f)return;
+var path='sop-interactive/'+sid+'_'+Date.now()+'_'+f.name;
+var {data,error}=await sb.storage.from('lms-files').upload(path,f);
+if(error){alert('Upload failed: '+error.message);return}
+var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);
+sop.interactiveUrl=urlData.publicUrl;sop.interactiveName=f.name;
+save();render();alert('Interactive assessment uploaded!');
+};inp.click();
+}
+function toggleInteractiveNA(sid){
+var sop=sops.find(function(s){return s.id===sid});
+sop.interactiveNA=!sop.interactiveNA;
+if(sop.interactiveNA){sop.interactiveUrl=null;sop.interactiveName=null;}
+save();render();
+}
 
 // Question editor
 function openQEditor(sid,mode){qmSopId=sid;qmMode=mode;qmQt='';qmOpts=['','','',''];qmCor=0;qmBulk='';qmEi=null;render()}
@@ -525,90 +563,105 @@ function updateQ(){qmQt=document.getElementById('qm-qt')?document.getElementById
 if(!qmQt.trim()||qmOpts.some(function(o){return!o.trim()})){alert('Fill all fields');return}
 var sop=sops.find(function(s){return s.id===qmSopId});sop.qs[qmEi]={id:sop.qs[qmEi].id,t:qmQt.trim(),o:qmOpts.map(function(x){return x.trim()}),c:qmCor};
 qmEi=null;qmQt='';qmOpts=['','','',''];save();render();}
-function cancelQEdit(){qmEi=null;qmQt='';qmOpts=['','','',''];qmCor=0;render()}
 function deleteQ(qid){var sop=sops.find(function(s){return s.id===qmSopId});sop.qs=sop.qs.filter(function(q){return q.id!==qid});save();render()}
+function cancelQEdit(){qmEi=null;qmQt='';qmOpts=['','','',''];qmCor=0;render()}
 function importBulk(){qmBulk=document.getElementById('qm-bulk')?document.getElementById('qm-bulk').value:'';
-if(!qmBulk.trim()){alert('Paste first');return}var lines=qmBulk.trim().split('\n').filter(function(l){return l.trim()});var qs=[],cur=null;
-lines.forEach(function(line){var l=line.trim();
-if(/^\d+[.)]\s/.test(l)){if(cur&&cur.o.length===4)qs.push(cur);cur={id:gid(),t:l.replace(/^\d+[.)]\s*/,''),o:[],c:0};return}
-if(cur&&/^[A-Da-d][.)]\s/.test(l)){var ot=l.replace(/^[A-Da-d][.)]\s*/,'');var ic=ot.endsWith('*');cur.o.push(ic?ot.slice(0,-1).trim():ot);if(ic)cur.c=cur.o.length-1;return}
-if(cur&&/^(answer|correct|ans)[:=]\s*/i.test(l)){var a=l.replace(/^(answer|correct|ans)[:=]\s*/i,'').trim().toUpperCase();var idx='ABCD'.indexOf(a[0]);if(idx>=0)cur.c=idx}});
-if(cur&&cur.o.length===4)qs.push(cur);if(!qs.length){alert('Could not parse');return}
+var qs=[];var lines=qmBulk.split('\n');var currentQ=null;
+lines.forEach(function(line){line=line.trim();if(!line)return;
+if(/^\d+\./.test(line)){
+if(currentQ){qs.push(currentQ);}
+currentQ={t:line,o:[],c:0};}
+else if(/^[A-D]\)/.test(line)){
+var idx=line.charCodeAt(0)-65;var txt=line.substring(3).trim();var isAns=txt.endsWith('*')||/^Answer:\s*[A-D]/i.test(line);
+if(isAns){if(txt.endsWith('*'))txt=txt.slice(0,-1).trim();else txt=txt.replace(/^Answer:\s*[A-D]\s*/i,'').trim();currentQ.c=idx;}
+if(currentQ)currentQ.o[idx]=txt;}});
+if(currentQ)qs.push(currentQ);
+if(!qs.length){alert('Could not parse questions');return}
 var sop=sops.find(function(s){return s.id===qmSopId});sop.qs=sop.qs.concat(qs);qmBulk='';save();render();alert(qs.length+' imported');}
 
-// Assignment
-function doAssign(){var mode=document.getElementById('asgn-mode').value;var sc=document.getElementById('asgn-sop').value;var order=parseInt(document.getElementById('asgn-order').value)||1;
-if(!sc){alert('Select a training course');return}
-var targetEmps=[];
-if(mode==='individual'){var eid=document.getElementById('asgn-emp').value;if(!eid){alert('Select an employee');return}targetEmps=[eid];}
-else if(mode==='site'){var site=document.getElementById('asgn-site').value;if(!site){alert('Select a site');return}targetEmps=emps.filter(function(e){return e.site===site}).map(function(e){return e.id});}
-else if(mode==='dept'){var dept=document.getElementById('asgn-dept').value;if(!dept){alert('Enter department');return}targetEmps=emps.filter(function(e){return e.dept.toLowerCase().indexOf(dept.toLowerCase())>=0}).map(function(e){return e.id});}
-var added=0;targetEmps.forEach(function(eid){
-if(!assigns.some(function(a){return a.eid===eid&&a.sc===sc})){assigns.push({eid:eid,sc:sc,order:order,dt:now()});added++;}});
-save();render();alert(added+' assignment(s) created.');}
-function removeAssign(eid,sc){assigns=assigns.filter(function(a){return!(a.eid===eid&&a.sc===sc)});save();render()}
-
-// Unlock
-function showUnlock(eid){var emp=emps.find(function(e){return e.id===eid});
-var lockedSops=sops.filter(function(s){return isLocked(eid,s.code)});
-var reason=prompt('Unlock assessment for '+emp.name+'?\n\nLocked courses: '+lockedSops.map(function(s){return s.code}).join(', ')+'\n\nEnter reason for unlocking:');
-if(reason===null)return;
-lockedSops.forEach(function(s){
-res=res.filter(function(r){return!(r.eid===eid&&r.sc===s.code)});
-var k=eid+'_'+s.code;prog[k]=prog[k]||{};prog[k].sr=false;prog[k].vw=false;
-unlockLog.push({eid:eid,sc:s.code,dt:now(),reason:reason||'No reason provided'});});
-save();render();alert('Assessment unlocked for '+emp.name);}
-
-// Sites
-function addSite(){var v=document.getElementById('new-site').value.trim();if(!v)return;if(sites.indexOf(v)>=0){alert('Exists');return}sites.push(v);save();render()}
-function removeSite(s){sites=sites.filter(function(x){return x!==s});save();render()}
-function clearNotifs(){notifs=[];save();render()}
-
 // Employee management
-function toggleAddEmp(){var el=document.getElementById('add-emp-form');if(el){el.classList.toggle('hide');if(!el.classList.contains('hide')){document.getElementById('edit-emp-id').value='';document.getElementById('emp-form-title').textContent='Add Employee';['nemp-id','nemp-idn','nemp-name','nemp-dept'].forEach(function(id){document.getElementById(id).value=''});document.getElementById('nemp-gender').value='';document.getElementById('nemp-site').value='';document.getElementById('nemp-pin').value='1234';}}
-var bf=document.getElementById('bulk-emp-form');if(bf)bf.classList.add('hide');}
-function toggleBulkEmp(){var el=document.getElementById('bulk-emp-form');if(el)el.classList.toggle('hide');var af=document.getElementById('add-emp-form');if(af)af.classList.add('hide');}
-function saveEmp(){var eid=document.getElementById('nemp-id').value.trim();var idn=document.getElementById('nemp-idn').value.trim();
-var name=document.getElementById('nemp-name').value.trim();var gender=document.getElementById('nemp-gender').value;
-var dept=document.getElementById('nemp-dept').value.trim();var site=document.getElementById('nemp-site').value;var pin=document.getElementById('nemp-pin').value.trim()||'1234';
-if(!eid||!name||!gender||!site){alert('Employee number, name, gender, site required');return}
-var editId=document.getElementById('edit-emp-id').value;
-if(editId){var idx=emps.findIndex(function(e){return e.id===editId});if(idx>=0)emps[idx]={id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin};}
-else{if(emps.some(function(e){return e.id.toUpperCase()===eid.toUpperCase()})){alert('Already exists');return}emps.push({id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin});}
+function toggleAddEmp(){var el=document.getElementById('add-emp-form');if(el)el.classList.toggle('hide')}
+function toggleBulkEmp(){var el=document.getElementById('bulk-emp-form');if(el)el.classList.toggle('hide')}
+function saveEmp(){var id=document.getElementById('edit-emp-id').value;var idn=document.getElementById('nemp-idn').value,eid=document.getElementById('nemp-id').value,name=document.getElementById('nemp-name').value,gender=document.getElementById('nemp-gender').value,dept=document.getElementById('nemp-dept').value,site=document.getElementById('nemp-site').value,pin=document.getElementById('nemp-pin').value;
+if(!eid||!name||!idn){alert('Fill required fields');return}
+if(id){var emp=emps.find(function(e){return e.id===id});if(emp){emp.id=eid;emp.idn=idn;emp.name=name;emp.gender=gender;emp.dept=dept;emp.site=site;emp.pin=pin;}}
+else if(!emps.find(function(e){return e.id===eid})){emps.push({id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin});}
+else{alert('Employee already exists');return}
+document.getElementById('nemp-id').value='';document.getElementById('nemp-idn').value='';document.getElementById('nemp-name').value='';document.getElementById('nemp-gender').value='';document.getElementById('nemp-dept').value='';document.getElementById('nemp-site').value='';document.getElementById('nemp-pin').value='1234';document.getElementById('edit-emp-id').value='';
 save();render();}
-function editEmp(i){var e=emps[i];render();setTimeout(function(){var form=document.getElementById('add-emp-form');if(form)form.classList.remove('hide');
-document.getElementById('edit-emp-id').value=e.id;document.getElementById('emp-form-title').textContent='Edit: '+e.name;
-document.getElementById('nemp-id').value=e.id;document.getElementById('nemp-idn').value=e.idn;document.getElementById('nemp-name').value=e.name;
-document.getElementById('nemp-gender').value=e.gender;document.getElementById('nemp-dept').value=e.dept;document.getElementById('nemp-site').value=e.site;document.getElementById('nemp-pin').value=e.pin;},50);}
-function deleteEmp(eid){if(!confirm('Delete '+eid+'?'))return;emps=emps.filter(function(e){return e.id!==eid});save();render();}
-function dlEmpTemplate(){var csv='EmployeeNumber,IDNumber,FullName,Gender,Department,Site,PIN\nOM006,9201015012083,John Smith,Male,Processing,Thutse Mining,1234\n';
-var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='OneMining_Employee_Template.csv';a.click();}
-function uploadEmpCSV(){var inp=document.createElement('input');inp.type='file';inp.accept='.csv';inp.onchange=function(e){var f=e.target.files[0];if(!f)return;var reader=new FileReader();reader.onload=function(ev){
-var lines=ev.target.result.split('\n').filter(function(l){return l.trim()});var added=0,skipped=0;
-lines.forEach(function(line,i){var cols=line.split(',').map(function(c){return c.trim().replace(/^"|"$/g,'')});
-if(i===0&&cols[0].toLowerCase().indexOf('employee')>=0)return;if(cols.length<6)return;
-var eid=cols[0];if(!eid||emps.some(function(e){return e.id.toUpperCase()===eid.toUpperCase()})){skipped++;return}
-emps.push({id:eid,idn:cols[1]||'',name:cols[2],gender:cols[3],dept:cols[4],site:cols[5],pin:cols[6]||'1234'});added++;});
-save();render();alert(added+' added, '+skipped+' skipped');};reader.readAsText(f)};inp.click();}
-// === REPORT DOWNLOADS ===
-function dlProofEmp(eid,sc){var pr=res.find(function(r){return r.eid===eid&&r.sc===sc&&r.pass});
-if(!pr){alert('No passed assessment found.');return}dlProof(eid,sc,pr.score,pr.total,pr.pct,true,pr.att,pr.dt);}
+function editEmp(i){var e=emps[i];document.getElementById('edit-emp-form').classList.remove('hide');document.getElementById('emp-form-title').textContent='Edit Employee';document.getElementById('edit-emp-id').value=e.id;document.getElementById('nemp-id').value=e.id;document.getElementById('nemp-idn').value=e.idn;document.getElementById('nemp-name').value=e.name;document.getElementById('nemp-gender').value=e.gender;document.getElementById('nemp-dept').value=e.dept;document.getElementById('nemp-site').value=e.site;document.getElementById('nemp-pin').value=e.pin;}
+function deleteEmp(id){emps=emps.filter(function(e){return e.id!==id});save();render()}
+function uploadEmpCSV(){var inp=document.createElement('input');inp.type='file';inp.accept='.csv';inp.onchange=function(e){var f=e.target.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(ev){var csv=ev.target.result;var lines=csv.split('\n');for(var i=1;i<lines.length;i++){var line=lines[i].trim();if(!line)continue;var cols=line.split(',').map(function(c){return c.trim()});if(cols.length<7)continue;emps.push({id:cols[0],idn:cols[1],name:cols[2],gender:cols[3],dept:cols[4],site:cols[5],pin:cols[6]});}save();render();alert(Math.max(0,lines.length-2)+' added')};rd.readAsText(f)};inp.click()}
+function dlEmpTemplate(){var csv='EmployeeNumber,IDNumber,FullName,Gender,Department,Site,PIN\nOM006,9201015012083,Thabo Mokoena,Male,Processing,Thutse Mining,1234\nOM007,9201015012084,Lerato Khubone,Female,Safety,Malekaskraal Vanadium,1234';var a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(csv);a.download='employees-template.csv';a.click()}
 
+// Assignment
+function toggleBulkAssign(){var el=document.getElementById('bulk-assign-form');if(el)el.classList.toggle('hide')}
+function editAssign(eid){var html='<div class="mbg" onclick="if(event.target===this)render()"><div class="mdl"><div class="mh"><h2>Assign Training — '+eid+'</h2><button class="btn btn-o btn-sm" onclick="render()">Close</button></div><div class="mbd">';
+var emp=emps.find(function(e){return e.id===eid});
+var ea=getEmpAssigns(eid);
+html+='<div style="margin-bottom:16px"><p style="color:#6B7280;font-size:.9rem">'+emp.name+' · '+emp.id+' · '+emp.site+'</p></div>';
+html+='<div style="margin-bottom:20px"><h3 style="margin-bottom:12px">Available SOPs</h3>';
+sops.forEach(function(s){var assigned=ea.some(function(a){return a.sc===s.code});html+='<div style="display:flex;gap:10px;align-items:center;padding:10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:8px"><input type="checkbox" id="ck-'+s.id+'"'+(assigned?' checked':'')+'><label style="flex:1;cursor:pointer;margin:0" for="ck-'+s.id+'"><b>'+s.code+'</b> — '+s.title+'</label></div>'});
+html+='</div>';
+html+='<div style="display:flex;gap:10px"><button class="btn btn-p" style="width:auto" onclick="saveAssignments(\''+eid+'\')">Save</button><button class="btn btn-o" style="width:auto" onclick="render()">Cancel</button></div>';
+html+='</div></div></div>';
+document.body.insertAdjacentHTML('beforeend',html);
+}
+function saveAssignments(eid){
+var newAssigns=[];
+sops.forEach(function(s){if(document.getElementById('ck-'+s.id).checked){newAssigns.push(s.code)}});
+assigns=assigns.filter(function(a){return a.eid!==eid});
+newAssigns.forEach(function(sc,order){assigns.push({id:gid(),eid:eid,sc:sc,order:order})});
+save();render();
+}
+function importBulkAssign(){
+var txt=document.getElementById('bulk-assign-txt').value;
+var lines=txt.split('\n');
+lines.forEach(function(line){
+line=line.trim();if(!line)return;
+var parts=line.split(',').map(function(p){return p.trim()});
+if(parts.length<2)return;
+var eid=parts[0];var scs=parts.slice(1);
+scs.forEach(function(sc,order){if(!assigns.find(function(a){return a.eid===eid&&a.sc===sc})){assigns.push({id:gid(),eid:eid,sc:sc,order:order})}});
+});
+save();render();alert('Assignments imported');
+}
+
+// Notifications & unlocking
+function clearNotifs(){notifs=[];save();render()}
+function showUnlock(eid){
+var html='<div class="mbg" onclick="if(event.target===this)render()"><div class="mdl"><div class="mh"><h2>Unlock SOP Access</h2><button class="btn btn-o btn-sm" onclick="render()">Close</button></div><div class="mbd">';
+var emp=emps.find(function(e){return e.id===eid});var ea=getEmpAssigns(eid);
+var locked=ea.filter(function(a){return isLocked(eid,a.sc)});
+html+='<p style="margin-bottom:16px">'+emp.name+' — '+eid+'</p>';
+html+='<div>';
+locked.forEach(function(a){html+='<div style="padding:10px;background:#fef2f2;border:1px solid #fee2e2;border-radius:6px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center"><span><b>'+a.sc+'</b> — 3 failed attempts</span><button class="btn btn-gn btn-sm" onclick="unlockSop(\''+eid+'\',\''+a.sc+'\')">Unlock</button></div></div>'});
+html+='</div></div></div></div>';
+document.body.insertAdjacentHTML('beforeend',html);
+}
+function unlockSop(eid,sc){
+res=res.filter(function(r){return!(r.eid===eid&&r.sc===sc)});
+unlockLog.push({id:gid(),eid:eid,sc:sc,dt:now()});
+save();render();
+}
+
+// Site management
+function toggleAddSite(){var el=document.getElementById('add-site-form');if(el)el.classList.toggle('hide')}
+function addSite(){var name=document.getElementById('nsite-name').value;if(!name)return;if(!sites.find(function(s){return s===name})){sites.push(name);document.getElementById('nsite-name').value='';save();render()}}
+function delSite(s){sites=sites.filter(function(x){return x!==s});save();render()}
+
+// Reports & proof
+function dlProofEmp(eid,sc){var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});var r=res.find(function(x){return x.eid===eid&&x.sc===sc&&x.pass});if(!r)return;dlProof(eid,sc,r.score,r.total,r.pct,r.pass,r.att,r.dt)}
 function dlProof(eid,sc,score,total,pct,pass,att,dt){
-var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});if(!emp||!sop)return;
+var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});
 var w=window.open('','_blank');
-w.document.write('<!DOCTYPE html><html><head><title>Assessment - '+emp.name+'</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;color:#243034;padding:40px;max-width:800px;margin:0 auto}.hdr{text-align:center;padding-bottom:24px;border-bottom:4px solid #FBB227;margin-bottom:30px}.hdr h1{font-size:1.8rem;font-weight:800}.gold{color:#FBB227}.hdr p{font-size:.85rem;color:#6B7280;margin-top:4px}.ttl{text-align:center;margin:24px 0;font-size:1.3rem;font-weight:700;text-transform:uppercase;letter-spacing:2px}.rb{text-align:center;margin:24px 0;padding:20px;border-radius:12px}.rb.ps{background:rgba(34,197,94,.1);border:2px solid #22C55E}.rb.fl{background:rgba(239,68,68,.1);border:2px solid #EF4444}.rb .s{font-size:2.5rem;font-weight:800}.rb.ps .s{color:#22C55E}.rb.fl .s{color:#EF4444}.rb .st{font-size:1.2rem;font-weight:700;text-transform:uppercase;margin-top:4px}table{width:100%;border-collapse:collapse;margin:20px 0}td{padding:10px 16px;border:1px solid #e5e7eb;font-size:.9rem}td:first-child{font-weight:700;background:#f8f9fa;width:200px;text-transform:uppercase;font-size:.78rem;color:#6B7280}.sig{margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:40px}.sbox{border-top:2px solid #243034;padding-top:8px;margin-top:40px}.sbox p{font-size:.8rem;color:#6B7280}.ftr{margin-top:40px;padding-top:16px;border-top:2px solid #FBB227;text-align:center;font-size:.75rem;color:#6B7280}.wm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:6rem;font-weight:800;opacity:.04;pointer-events:none}</style></head><body>');
-w.document.write('<div class="wm">ONE MINING</div><div class="hdr"><h1>One <span class="gold">Mining</span></h1><p>Training Management System</p></div>');
-w.document.write('<div class="ttl">'+(pass?'Certificate of Competency':'Assessment Record')+'</div>');
-w.document.write('<div class="rb '+(pass?'ps':'fl')+'"><div class="s">'+pct+'%</div><div class="st">'+(pass?'PASSED':'FAILED')+'</div></div>');
-w.document.write('<table><tr><td>Employee Name</td><td>'+emp.name+'</td></tr><tr><td>Employee Number</td><td>'+emp.id+'</td></tr><tr><td>ID Number</td><td>'+emp.idn+'</td></tr><tr><td>Gender</td><td>'+emp.gender+'</td></tr><tr><td>Site</td><td>'+emp.site+'</td></tr><tr><td>Department</td><td>'+emp.dept+'</td></tr></table>');
-w.document.write('<table><tr><td>SOP Code</td><td>'+sop.code+'</td></tr><tr><td>SOP Title</td><td>'+sop.title+'</td></tr><tr><td>Revision</td><td>'+sop.rev+'</td></tr></table>');
-w.document.write('<table><tr><td>Score</td><td>'+score+'/'+total+' ('+pct+'%)</td></tr><tr><td>Pass Mark</td><td>80% ('+Math.ceil(total*.8)+'/'+total+')</td></tr><tr><td>Result</td><td style="font-weight:700;color:'+(pass?'#22C55E':'#EF4444')+'">'+(pass?'COMPETENT':'NOT YET COMPETENT')+'</td></tr><tr><td>Attempt</td><td>'+att+'/3</td></tr><tr><td>Date</td><td>'+fd(dt)+'</td></tr></table>');
-w.document.write('<div class="sig"><div><div class="sbox"><p>Employee Signature</p></div><p style="margin-top:8px;font-size:.82rem">'+emp.name+'</p></div><div><div class="sbox"><p>Assessor Signature</p></div><p style="margin-top:8px;font-size:.82rem">Name: _________________________</p></div></div>');
-w.document.write('<div class="sig"><div><div class="sbox"><p>Date</p></div></div><div><div class="sbox"><p>Training Manager</p></div></div></div>');
-w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training Management System</p><p>'+sop.code+' | '+sop.rev+' | Generated '+fd(now())+'</p><p style="margin-top:6px">Official proof of assessment. Retain for compliance.</p></div></body></html>');
+w.document.write('<!DOCTYPE html><html><head><title>One Mining — Proof of Competency</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;color:#243034;padding:40px;background:#f9fafb}h1{color:#FBB227;font-size:2rem;margin-bottom:8px}.logo{text-align:center;margin-bottom:40px}.card{background:#fff;padding:40px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.1);max-width:600px;margin:0 auto}.hdr{border-bottom:3px solid #FBB227;padding-bottom:20px;margin-bottom:30px}table{width:100%;margin:20px 0}td{padding:10px;border-bottom:1px solid #e5e7eb}td:first-child{font-weight:600;width:200px}.res{text-align:center;margin:30px 0;padding:30px;background:#f0fdf4;border:2px solid #22c55e;border-radius:8px}.res .big{font-size:3rem;font-weight:800;color:#22c55e}.res .sm{color:#6b7280;font-size:.9rem;margin-top:8px}.sig{margin-top:40px;border-top:1px solid #d1d5db;padding-top:20px;text-align:center;color:#6b7280;font-size:.85rem}</style></head><body>');
+w.document.write('<div class="card"><div class="logo"><h1>One <span style="color:#243034">Mining</span></h1><p style="color:#6B7280">Proof of Training Competency</p></div><div class="hdr"><h2 style="margin:0">'+sop.title+'</h2><p style="color:#6B7280;margin:6px 0 0">'+sop.code+' · '+sop.rev+'</p></div>');
+w.document.write('<table><tr><td>Employee</td><td>'+emp.name+'</td></tr><tr><td>Employee #</td><td>'+emp.id+'</td></tr><tr><td>ID Number</td><td>'+emp.idn+'</td></tr><tr><td>Site</td><td>'+emp.site+'</td></tr></table>');
+w.document.write('<div class="res"><div class="big">✓</div><div style="font-size:1.5rem;font-weight:700;margin:10px 0;color:#22c55e">COMPETENT</div><div class="sm">'+score+'/'+total+' · '+pct+'%</div></div>');
+w.document.write('<table><tr><td>Assessment Date</td><td>'+fd(dt)+'</td></tr><tr><td>Attempt</td><td>'+att+'/3</td></tr><tr><td>Pass Mark</td><td>80%</td></tr></table>');
+w.document.write('<div class="sig"><p>This document certifies that the above employee has successfully completed the training assessment for the specified SOP.</p><p style="margin-top:12px">Generated '+fd(now())+' | One Mining Training Management System</p></div></div></body></html>');
 w.document.close();setTimeout(function(){w.print()},500);}
-
 function dlReport(type,id){
 var w=window.open('','_blank');
 var css='*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;color:#243034;padding:30px;font-size:12px}.hdr{text-align:center;padding-bottom:16px;border-bottom:4px solid #FBB227;margin-bottom:24px}.hdr h1{font-size:1.5rem;font-weight:800}.gold{color:#FBB227}.hdr p{font-size:.8rem;color:#6B7280}h2{font-size:1rem;font-weight:700;margin:20px 0 10px;border-bottom:2px solid #FBB227;padding-bottom:6px}table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11px}th{background:#243034;color:#fff;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase}td{padding:8px 10px;border:1px solid #e5e7eb}.pass{color:#22C55E;font-weight:700}.fail{color:#EF4444;font-weight:700}.ftr{margin-top:30px;padding-top:12px;border-top:2px solid #FBB227;text-align:center;font-size:10px;color:#6B7280}@media print{body{padding:15px}}';
@@ -664,4 +717,5 @@ w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training M
 w.document.close();setTimeout(function(){w.print()},500);}
 
 init();
+
 
