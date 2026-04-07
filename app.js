@@ -7,6 +7,7 @@ function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-
 // Data variables (loaded from Supabase on init)
 var sites=[];
 var emps=[];
+var dataLoaded=false;
 var res=[];
 var prog={};
 var notifs=[];
@@ -37,7 +38,7 @@ async function cloudSave(key, value) {
 }
 
 // Save all data (called after every change)
-function save() {
+function save() {if(!dataLoaded){console.warn("Save blocked - data not loaded yet");return;}
     cloudSave('res', res);
     cloudSave('prog', prog);
     cloudSave('notifs', notifs);
@@ -60,7 +61,8 @@ async function init() {
         unlockLog = await cloudLoad('unlock', []);
         sops = await cloudLoad('sops', []);
         adminPass = await cloudLoad('admin_password', 'admin');
-        render();
+        dataLoaded=true;
+render();
     } catch(e) {
         console.error('Failed to load data:', e);
         document.getElementById('app').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Arial;background:#243034;color:#fff"><h1 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">One <span style="color:#FBB227">Mining</span></h1><p style="color:#EF4444">Failed to connect to database. Please check your internet connection and try again.</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 24px;background:#FBB227;border:none;border-radius:8px;font-weight:600;cursor:pointer">Retry</button></div>';
@@ -453,10 +455,35 @@ h+='<div class="spc" onclick="dlReport(\'full\')" style="text-align:center;paddi
 h+='<div class="spc" onclick="dlReport(\'site\')" style="text-align:center;padding:30px"><h4>📥 Site Training Summary</h4><p>Training status by site</p></div>';
 h+='<div class="spc" onclick="dlReport(\'course\')" style="text-align:center;padding:30px"><h4>📥 Course Completion Report</h4><p>Status per SOP/training course</p></div>';
 h+='</div>';
-// Quick stats
 var tp=res.filter(function(r){return r.pass}).length,tt=res.length,pr=tt?Math.round(tp/tt*100):0;
-h+='<div class="sg"><div class="sc gd"><div class="l">Total Assessments</div><div class="v">'+tt+'</div></div><div class="sc gn"><div class="l">Passed</div><div class="v">'+tp+'</div></div><div class="sc bl"><div class="l">Overall Pass Rate</div><div class="v">'+pr+'%</div></div></div>';
-h+='<div class="card"><div class="ch"><h3>Recent Results</h3></div><div class="cb"><div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>SOP</th><th>Score</th><th>Result</th><th>Attempt</th><th>Date</th></tr></thead><tbody>';
+var totalAssigned=assigns.length;var totalCompleted=0;var totalInProgress=0;var totalNotStarted=0;var totalLocked=0;
+var statusRows=[];
+emps.forEach(function(emp){
+var ea=getEmpAssigns(emp.id);
+ea.forEach(function(a){
+var st=getStatus(emp.id,a.sc);
+if(st==='passed')totalCompleted++;
+else if(st==='progress')totalInProgress++;
+else if(st==='locked')totalLocked++;
+else totalNotStarted++;
+var sop=sops.find(function(s){return s.code===a.sc});
+var stTxt=st==='passed'?'COMPETENT':st==='locked'?'LOCKED':st==='progress'?'IN PROGRESS':'OUTSTANDING';
+var stCol=st==='passed'?'green':st==='locked'?'red':st==='progress'?'orange':'gray';
+var att=getAtt(emp.id,a.sc);
+var lastPass=att.find(function(r){return r.pass});
+var pk=emp.id+'_'+a.sc;var p=prog[pk]||{};
+statusRows.push({emp:emp,sc:a.sc,sopTitle:sop?sop.title:a.sc,st:st,stTxt:stTxt,stCol:stCol,score:lastPass?lastPass.pct+'%':'-',att:att.length,vw:p.vw||false,sr:p.sr||false,ia:p.ia||false,dt:lastPass?lastPass.dt:(p.vwd||p.srd||p.iad||'')});
+});
+});
+h+='<div class="sg"><div class="sc gd"><div class="l">Total Assigned</div><div class="v">'+totalAssigned+'</div></div><div class="sc gn"><div class="l">Competent</div><div class="v">'+totalCompleted+'</div></div><div class="sc" style="background:#FFA500;color:#fff;border-radius:12px;padding:18px;text-align:center"><div class="l">In Progress</div><div class="v">'+totalInProgress+'</div></div><div class="sc bl"><div class="l">Pass Rate</div><div class="v">'+pr+'%</div></div></div>';
+h+='<div class="card"><div class="ch"><h3>Training Status Overview</h3></div><div class="cb"><div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>SOP Code</th><th>SOP Title</th><th>View</th><th>Read</th><th>Pre-Test</th><th>Status</th><th>Score</th><th>Attempts</th><th>Date</th></tr></thead><tbody>';
+statusRows.forEach(function(r){
+h+='<tr><td>'+r.emp.name+'</td><td>'+r.emp.site+'</td><td style="font-weight:600">'+r.sc+'</td><td>'+r.sopTitle+'</td>';
+h+='<td>'+(r.vw?'✅':'❌')+'</td><td>'+(r.sr?'✅':'❌')+'</td><td>'+(r.ia?'✅':'❌')+'</td>';
+h+='<td>'+bg(r.stTxt,r.stCol)+'</td><td>'+r.score+'</td><td>'+r.att+'/3</td><td>'+(r.dt?fd(r.dt):'-')+'</td></tr>';
+});
+h+='</tbody></table></div></div></div>';
+h+='<div class="card"><div class="ch"><h3>Recent Assessment Results</h3></div><div class="cb"><div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>SOP</th><th>Score</th><th>Result</th><th>Attempt</th><th>Date</th></tr></thead><tbody>';
 res.slice().reverse().slice(0,15).forEach(function(r){var emp=emps.find(function(e){return e.id===r.eid});
 h+='<tr><td>'+(emp?emp.name:r.eid)+'</td><td>'+(emp?emp.site:'')+'</td><td style="font-weight:600">'+r.sc+'</td><td style="font-weight:700">'+r.pct+'%</td><td>'+bg(r.pass?'PASS':'FAIL',r.pass?'green':'red')+'</td><td>'+r.att+'/3</td><td>'+fd(r.dt)+'</td></tr>'});
 return h+'</tbody></table></div></div></div></div>';
@@ -587,7 +614,7 @@ if(!eid||!name||!gender||!site){alert('Employee number, name, gender, site requi
 var editId=document.getElementById('edit-emp-id').value;
 if(editId){var idx=emps.findIndex(function(e){return e.id===editId});if(idx>=0)emps[idx]={id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin};}
 else{if(emps.some(function(e){return e.id.toUpperCase()===eid.toUpperCase()})){alert('Already exists');return}emps.push({id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin});}
-save();render();}
+if(editId&&editId!==eid){migrateEmpId(editId,eid);}save();render();}
 function editEmp(i){var e=emps[i];render();setTimeout(function(){var form=document.getElementById('add-emp-form');if(form)form.classList.remove('hide');
 document.getElementById('edit-emp-id').value=e.id;document.getElementById('emp-form-title').textContent='Edit: '+e.name;
 document.getElementById('nemp-id').value=e.id;document.getElementById('nemp-idn').value=e.idn;document.getElementById('nemp-name').value=e.name;
@@ -704,3 +731,15 @@ window.addEventListener('message',function(ev){
 if(ev.data&&ev.data.type==='pretest-continue'){
 setSopTab('test');
 }});
+
+function migrateEmpId(oldId,newId){
+assigns.forEach(function(a){if(a.eid===oldId)a.eid=newId;});
+var progKeys=Object.keys(prog);
+progKeys.forEach(function(k){
+if(k.indexOf(oldId+'_')===0){
+var newKey=newId+k.substring(oldId.length);
+prog[newKey]=prog[k];
+delete prog[k];
+}});
+res.forEach(function(r){if(r.eid===oldId)r.eid=newId;});
+}
