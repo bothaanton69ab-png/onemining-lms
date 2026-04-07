@@ -261,7 +261,7 @@ if(!isA&&!pr.vw)h+='<div style="text-align:center"><button class="btn btn-p" sty
 if(!isA&&pr.vw)h+='<p style="text-align:center;color:#22C55E;font-weight:600">Completed '+fd(pr.vwd)+'</p>';
 h+='</div>';}
 if(!isA&&!s.interactiveNA&&tab==='interactive'){h+='<div style="max-width:860px;margin:0 auto">';
-if(s.interactiveUrl)h+='<iframe src="'+s.interactiveUrl+'" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
+if(s.interactiveUrl)h+='<iframe data-interactive-url="'+s.interactiveUrl+'" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
 else h+='<div class="card"><div class="cb" style="text-align:center;padding:28px;color:#6B7280">No interactive assessment uploaded yet.</div></div>';
 if(!pr.ia)h+='<div style="text-align:center;margin-top:16px"><button class="btn btn-p" style="width:auto;padding:12px 44px" onclick="markInteractive()">✓ I have completed the interactive training</button></div>';
 if(pr.ia)h+='<p style="text-align:center;margin-top:12px;color:#22C55E;font-weight:600">Completed '+fd(pr.iad)+'</p>';
@@ -485,9 +485,9 @@ if(pin!==emp.pin){document.getElementById('login-err').textContent='Incorrect PI
 user=emp;page='dashboard';render();}
 function doLogout(){user=null;page='login';activeSop=null;render()}
 function goPage(p){page=p;activeSop=null;assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()}
-function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()}
+function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()setTimeout(fixInteractiveIframes,200);}
 function closeSop(){activeSop=null;render()}
-function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render()}
+function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render()setTimeout(fixInteractiveIframes,100);}
 function markRead(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=now();save();render()}
 function markVid(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].vw=true;prog[k].vwd=now();save();render()}
 function markInteractive(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].ia=true;prog[k].iad=now();save();render()}
@@ -514,7 +514,7 @@ if(editId){var sop=sops.find(function(s){return s.id===editId});if(sop){sop.code
 else{sops.push({id:gid(),code:code,rev:document.getElementById('nsop-rev').value||'Rev 1.0',title:title,desc:document.getElementById('nsop-desc').value||'',cat:document.getElementById('nsop-cat').value||'General',site:document.getElementById('nsop-site').value||'All Sites',html:'<h2>'+title+'</h2><p>Upload document.</p>',docUrl:null,docName:null,vidUrl:null,vidName:null,interactiveUrl:null,interactiveName:null,interactiveNA:iaNa,qs:[]});}
 save();render();}
 function delSop(id){sops=sops.filter(function(s){return s.id!==id});save();render()}
-function uploadDoc(sid){var inp=document.createElement('input');inp.type='file';inp.accept='.pdf';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var path='sop-docs/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.docUrl=urlData.publicUrl;sop.docName=f.name;save();render();alert('Document uploaded!')};inp.click()}
+function uploadDoc(sid){var inp=document.createElement('input');inp.type='file';inp.accept='.pdf';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var path='sop-docs/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f,{contentType:'text/html',upsert:true});if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.docUrl=urlData.publicUrl;sop.docName=f.name;save();render();alert('Document uploaded!')};inp.click()}
 function uploadVid(sid){var inp=document.createElement('input');inp.type='file';inp.accept='video/*';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;if(f.size>100*1024*1024){alert('Max 100MB. For larger videos, upload to YouTube and paste the link.');return}var path='sop-vids/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.vidUrl=urlData.publicUrl;sop.vidName=f.name;save();render();alert('Video uploaded!')};inp.click()}
 function uploadInteractive(sid){var sop=sops.find(function(s){return s.id===sid});if(sop.interactiveNA){alert('Interactive assessment is set to N/A for this SOP. Change it to "Enabled" first.');return}var inp=document.createElement('input');inp.type='file';inp.accept='.html';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var path='sop-interactive/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);sop.interactiveUrl=urlData.publicUrl;sop.interactiveName=f.name;save();render();alert('Interactive assessment uploaded!')};inp.click()}
 function toggleInteractiveNA(sid){var sop=sops.find(function(s){return s.id===sid});sop.interactiveNA=!sop.interactiveNA;if(sop.interactiveNA){sop.interactiveUrl=null;sop.interactiveName=null;}save();render()}
@@ -675,3 +675,30 @@ w.document.close();setTimeout(function(){w.print()},500);}
 
 init();
 
+
+
+// === INTERACTIVE IFRAME FIX (Supabase serves HTML as text/plain) ===
+async function fixInteractiveIframes(){
+var iframes=document.querySelectorAll('iframe[data-interactive-url]');
+for(var i=0;i<iframes.length;i++){
+var iframe=iframes[i];
+var url=iframe.getAttribute('data-interactive-url');
+if(url&&!iframe.dataset.fixed){
+iframe.dataset.fixed='true';
+try{
+var resp=await fetch(url);
+var html=await resp.text();
+var blob=new Blob([html],{type:'text/html'});
+iframe.src=URL.createObjectURL(blob);
+}catch(e){console.error('Interactive load failed:',e);
+}}}}
+
+// === LISTEN FOR PRE-TEST PASS/FAIL FROM IFRAME ===
+window.addEventListener('message',function(ev){
+if(ev.data&&ev.data.type==='pretest-result'&&ev.data.passed&&ev.data.sopId){
+markInteractive(ev.data.sopId);
+}});
+window.addEventListener('message',function(ev){
+if(ev.data&&ev.data.type==='pretest-continue'){
+setSopTab('test');
+}});
