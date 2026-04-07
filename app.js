@@ -485,9 +485,11 @@ if(pin!==emp.pin){document.getElementById('login-err').textContent='Incorrect PI
 user=emp;page='dashboard';render();}
 function doLogout(){user=null;page='login';activeSop=null;render()}
 function goPage(p){page=p;activeSop=null;assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()}
-function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()setTimeout(fixInteractiveIframes,200);}
+function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};render();
+setTimeout(fixInteractiveIframes,200);}
 function closeSop(){activeSop=null;render()}
-function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render()setTimeout(fixInteractiveIframes,100);}
+function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render();
+setTimeout(fixInteractiveIframes,100);}
 function markRead(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=now();save();render()}
 function markVid(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].vw=true;prog[k].vwd=now();save();render()}
 function markInteractive(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].ia=true;prog[k].iad=now();save();render()}
