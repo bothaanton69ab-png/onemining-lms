@@ -674,3 +674,69 @@ w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training M
 w.document.close();setTimeout(function(){w.print()},500);}
 
 init();
+
+
+// ============================================================
+// Interactive HTML rendering fix + LMS postMessage bridge
+// ============================================================
+(function(){
+  if(window._lmsIframeFixInstalled)return;
+  window._lmsIframeFixInstalled=true;
+
+  function convertIframe(ifr){
+    if(!ifr||ifr.tagName!=="IFRAME")return;
+    if(ifr.dataset._lmsConverted==="1")return;
+    var url=ifr.getAttribute("src")||"";
+    if(!url)return;
+    if(url.indexOf("supabase.co")<0)return;
+    if(url.indexOf(".html")<0)return;
+    ifr.dataset._lmsConverted="1";
+    fetch(url).then(function(r){return r.text();}).then(function(html){
+      ifr.removeAttribute("src");
+      ifr.srcdoc=html;
+    }).catch(function(e){console.warn("LMS iframe convert failed",e);});
+  }
+
+  function scanAll(){
+    document.querySelectorAll("iframe").forEach(convertIframe);
+  }
+
+  if(document.body){
+    scanAll();
+    var obs=new MutationObserver(function(ms){
+      ms.forEach(function(m){
+        m.addedNodes.forEach(function(n){
+          if(n.nodeType!==1)return;
+          if(n.tagName==="IFRAME")convertIframe(n);
+          if(n.querySelectorAll)n.querySelectorAll("iframe").forEach(convertIframe);
+        });
+      });
+    });
+    obs.observe(document.body,{childList:true,subtree:true});
+  }else{
+    document.addEventListener("DOMContentLoaded",scanAll);
+  }
+
+  window.addEventListener("message",function(ev){
+    try{
+      var d=ev.data;
+      if(!d||typeof d!=="object")return;
+      if(d.type!=="pretest-complete"&&d.type!=="interactive-complete")return;
+      console.log("[LMS] Interactive result received:",d);
+      window._lastInteractiveResult=d;
+      if(d.pass&&typeof curEmp!=="undefined"&&curEmp&&typeof curSop!=="undefined"&&curSop){
+        try{
+          var pk=curEmp.id+"_"+curSop.code;
+          if(typeof prog!=="undefined"&&prog){
+            if(!prog[pk])prog[pk]={};
+            prog[pk].ia=true;
+            prog[pk].iaScore=d.score;
+            prog[pk].iaAt=new Date().toISOString();
+            if(typeof save==="function")save();
+            if(typeof render==="function")render();
+          }
+        }catch(e){console.warn("LMS progress update failed",e);}
+      }
+    }catch(e){}
+  });
+})();
