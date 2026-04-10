@@ -7,7 +7,6 @@ function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-
 // Data variables (loaded from Supabase on init)
 var sites=[];
 var emps=[];
-var dataLoaded=false;
 var res=[];
 var prog={};
 var notifs=[];
@@ -38,7 +37,7 @@ async function cloudSave(key, value) {
 }
 
 // Save all data (called after every change)
-function save() {if(!dataLoaded){console.warn("Save blocked - data not loaded yet");return;}
+function save() {
     cloudSave('res', res);
     cloudSave('prog', prog);
     cloudSave('notifs', notifs);
@@ -61,8 +60,7 @@ async function init() {
         unlockLog = await cloudLoad('unlock', []);
         sops = await cloudLoad('sops', []);
         adminPass = await cloudLoad('admin_password', 'admin');
-        dataLoaded=true;
-render();
+        render();
     } catch(e) {
         console.error('Failed to load data:', e);
         document.getElementById('app').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Arial;background:#243034;color:#fff"><h1 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">One <span style="color:#FBB227">Mining</span></h1><p style="color:#EF4444">Failed to connect to database. Please check your internet connection and try again.</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 24px;background:#FBB227;border:none;border-radius:8px;font-weight:600;cursor:pointer">Retry</button></div>';
@@ -263,7 +261,7 @@ if(!isA&&!pr.vw)h+='<div style="text-align:center"><button class="btn btn-p" sty
 if(!isA&&pr.vw)h+='<p style="text-align:center;color:#22C55E;font-weight:600">Completed '+fd(pr.vwd)+'</p>';
 h+='</div>';}
 if(!isA&&!s.interactiveNA&&tab==='interactive'){h+='<div style="max-width:860px;margin:0 auto">';
-if(s.interactiveUrl)h+='<iframe data-interactive-url="'+s.interactiveUrl+'" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
+if(s.interactiveUrl)h+='<iframe src="'+s.interactiveUrl+'" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
 else h+='<div class="card"><div class="cb" style="text-align:center;padding:28px;color:#6B7280">No interactive assessment uploaded yet.</div></div>';
 if(!pr.ia)h+='<div style="text-align:center;margin-top:16px"><button class="btn btn-p" style="width:auto;padding:12px 44px" onclick="markInteractive()">✓ I have completed the interactive training</button></div>';
 if(pr.ia)h+='<p style="text-align:center;margin-top:12px;color:#22C55E;font-weight:600">Completed '+fd(pr.iad)+'</p>';
@@ -316,7 +314,7 @@ var h='<div class="topbar"><h1>Assign Training</h1></div><div class="pc">';
 // Assign form
 h+='<div class="card"><div class="ch"><h3>Assign Training to Employees</h3></div><div class="cb">';
 h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
-h+='<div class="fg"><label>Assign To</label><select id="asgn-mode" onchange="document.getElementById(\'asgn-emp-row\').style.display=this.value===\'individual\'?\'block\':\'none\';document.getElementById(\'asgn-site-row\').style.display=this.value===\'site\'?\'block\':\'none\';document.getElementById(\'asgn-dept-row\').style.display=this.value===\'dept\'?\'block\':\'none\'"><option value="individual">Individual Employee</option><option value="site">All at Site</option><option value="dept">All in Department</option></select></div>';
+h+='<div class="fg"><label>Assign To</label><select id="asgn-mode" onchange="var m=this.value;document.getElementById(\'asgn-emp-row\').className=\'fg\'+(m===\'individual\'?\'\':\' hide\');document.getElementById(\'asgn-site-row\').className=\'fg\'+(m===\'site\'?\'\':\' hide\');document.getElementById(\'asgn-dept-row\').className=\'fg\'+(m===\'dept\'?\'\':\' hide\')"><option value="individual">Individual Employee</option><option value="site">All at Site</option><option value="dept">All in Department</option></select></div>';
 h+='<div class="fg"><label>Training Course</label><select id="asgn-sop"><option value="">Select SOP...</option>';
 sops.forEach(function(s){h+='<option value="'+s.code+'">'+s.code+' — '+s.title+'</option>'});
 h+='</select></div></div>';
@@ -455,35 +453,10 @@ h+='<div class="spc" onclick="dlReport(\'full\')" style="text-align:center;paddi
 h+='<div class="spc" onclick="dlReport(\'site\')" style="text-align:center;padding:30px"><h4>📥 Site Training Summary</h4><p>Training status by site</p></div>';
 h+='<div class="spc" onclick="dlReport(\'course\')" style="text-align:center;padding:30px"><h4>📥 Course Completion Report</h4><p>Status per SOP/training course</p></div>';
 h+='</div>';
+// Quick stats
 var tp=res.filter(function(r){return r.pass}).length,tt=res.length,pr=tt?Math.round(tp/tt*100):0;
-var totalAssigned=assigns.length;var totalCompleted=0;var totalInProgress=0;var totalNotStarted=0;var totalLocked=0;
-var statusRows=[];
-emps.forEach(function(emp){
-var ea=getEmpAssigns(emp.id);
-ea.forEach(function(a){
-var st=getStatus(emp.id,a.sc);
-if(st==='passed')totalCompleted++;
-else if(st==='progress')totalInProgress++;
-else if(st==='locked')totalLocked++;
-else totalNotStarted++;
-var sop=sops.find(function(s){return s.code===a.sc});
-var stTxt=st==='passed'?'COMPETENT':st==='locked'?'LOCKED':st==='progress'?'IN PROGRESS':'OUTSTANDING';
-var stCol=st==='passed'?'green':st==='locked'?'red':st==='progress'?'orange':'gray';
-var att=getAtt(emp.id,a.sc);
-var lastPass=att.find(function(r){return r.pass});
-var pk=emp.id+'_'+a.sc;var p=prog[pk]||{};
-statusRows.push({emp:emp,sc:a.sc,sopTitle:sop?sop.title:a.sc,st:st,stTxt:stTxt,stCol:stCol,score:lastPass?lastPass.pct+'%':'-',att:att.length,vw:p.vw||false,sr:p.sr||false,ia:p.ia||false,dt:lastPass?lastPass.dt:(p.vwd||p.srd||p.iad||'')});
-});
-});
-h+='<div class="sg"><div class="sc gd"><div class="l">Total Assigned</div><div class="v">'+totalAssigned+'</div></div><div class="sc gn"><div class="l">Competent</div><div class="v">'+totalCompleted+'</div></div><div class="sc" style="background:#FFA500;color:#fff;border-radius:12px;padding:18px;text-align:center"><div class="l">In Progress</div><div class="v">'+totalInProgress+'</div></div><div class="sc bl"><div class="l">Pass Rate</div><div class="v">'+pr+'%</div></div></div>';
-h+='<div class="card"><div class="ch"><h3>Training Status Overview</h3></div><div class="cb"><div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>SOP Code</th><th>SOP Title</th><th>View</th><th>Read</th><th>Pre-Test</th><th>Status</th><th>Score</th><th>Attempts</th><th>Date</th></tr></thead><tbody>';
-statusRows.forEach(function(r){
-h+='<tr><td>'+r.emp.name+'</td><td>'+r.emp.site+'</td><td style="font-weight:600">'+r.sc+'</td><td>'+r.sopTitle+'</td>';
-h+='<td>'+(r.vw?'✅':'❌')+'</td><td>'+(r.sr?'✅':'❌')+'</td><td>'+(r.ia?'✅':'❌')+'</td>';
-h+='<td>'+bg(r.stTxt,r.stCol)+'</td><td>'+r.score+'</td><td>'+r.att+'/3</td><td>'+(r.dt?fd(r.dt):'-')+'</td></tr>';
-});
-h+='</tbody></table></div></div></div>';
-h+='<div class="card"><div class="ch"><h3>Recent Assessment Results</h3></div><div class="cb"><div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>SOP</th><th>Score</th><th>Result</th><th>Attempt</th><th>Date</th></tr></thead><tbody>';
+h+='<div class="sg"><div class="sc gd"><div class="l">Total Assessments</div><div class="v">'+tt+'</div></div><div class="sc gn"><div class="l">Passed</div><div class="v">'+tp+'</div></div><div class="sc bl"><div class="l">Overall Pass Rate</div><div class="v">'+pr+'%</div></div></div>';
+h+='<div class="card"><div class="ch"><h3>Recent Results</h3></div><div class="cb"><div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>SOP</th><th>Score</th><th>Result</th><th>Attempt</th><th>Date</th></tr></thead><tbody>';
 res.slice().reverse().slice(0,15).forEach(function(r){var emp=emps.find(function(e){return e.id===r.eid});
 h+='<tr><td>'+(emp?emp.name:r.eid)+'</td><td>'+(emp?emp.site:'')+'</td><td style="font-weight:600">'+r.sc+'</td><td style="font-weight:700">'+r.pct+'%</td><td>'+bg(r.pass?'PASS':'FAIL',r.pass?'green':'red')+'</td><td>'+r.att+'/3</td><td>'+fd(r.dt)+'</td></tr>'});
 return h+'</tbody></table></div></div></div></div>';
@@ -512,11 +485,9 @@ if(pin!==emp.pin){document.getElementById('login-err').textContent='Incorrect PI
 user=emp;page='dashboard';render();}
 function doLogout(){user=null;page='login';activeSop=null;render()}
 function goPage(p){page=p;activeSop=null;assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()}
-function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};render();
-setTimeout(fixInteractiveIframes,200);}
+function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()}
 function closeSop(){activeSop=null;render()}
-function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render();
-setTimeout(fixInteractiveIframes,100);}
+function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render()}
 function markRead(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=now();save();render()}
 function markVid(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].vw=true;prog[k].vwd=now();save();render()}
 function markInteractive(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].ia=true;prog[k].iad=now();save();render()}
@@ -543,7 +514,7 @@ if(editId){var sop=sops.find(function(s){return s.id===editId});if(sop){sop.code
 else{sops.push({id:gid(),code:code,rev:document.getElementById('nsop-rev').value||'Rev 1.0',title:title,desc:document.getElementById('nsop-desc').value||'',cat:document.getElementById('nsop-cat').value||'General',site:document.getElementById('nsop-site').value||'All Sites',html:'<h2>'+title+'</h2><p>Upload document.</p>',docUrl:null,docName:null,vidUrl:null,vidName:null,interactiveUrl:null,interactiveName:null,interactiveNA:iaNa,qs:[]});}
 save();render();}
 function delSop(id){sops=sops.filter(function(s){return s.id!==id});save();render()}
-function uploadDoc(sid){var inp=document.createElement('input');inp.type='file';inp.accept='.pdf';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var path='sop-docs/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f,{contentType:'text/html',upsert:true});if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.docUrl=urlData.publicUrl;sop.docName=f.name;save();render();alert('Document uploaded!')};inp.click()}
+function uploadDoc(sid){var inp=document.createElement('input');inp.type='file';inp.accept='.pdf';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var path='sop-docs/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.docUrl=urlData.publicUrl;sop.docName=f.name;save();render();alert('Document uploaded!')};inp.click()}
 function uploadVid(sid){var inp=document.createElement('input');inp.type='file';inp.accept='video/*';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;if(f.size>100*1024*1024){alert('Max 100MB. For larger videos, upload to YouTube and paste the link.');return}var path='sop-vids/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.vidUrl=urlData.publicUrl;sop.vidName=f.name;save();render();alert('Video uploaded!')};inp.click()}
 function uploadInteractive(sid){var sop=sops.find(function(s){return s.id===sid});if(sop.interactiveNA){alert('Interactive assessment is set to N/A for this SOP. Change it to "Enabled" first.');return}var inp=document.createElement('input');inp.type='file';inp.accept='.html';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var path='sop-interactive/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);sop.interactiveUrl=urlData.publicUrl;sop.interactiveName=f.name;save();render();alert('Interactive assessment uploaded!')};inp.click()}
 function toggleInteractiveNA(sid){var sop=sops.find(function(s){return s.id===sid});sop.interactiveNA=!sop.interactiveNA;if(sop.interactiveNA){sop.interactiveUrl=null;sop.interactiveName=null;}save();render()}
@@ -614,7 +585,7 @@ if(!eid||!name||!gender||!site){alert('Employee number, name, gender, site requi
 var editId=document.getElementById('edit-emp-id').value;
 if(editId){var idx=emps.findIndex(function(e){return e.id===editId});if(idx>=0)emps[idx]={id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin};}
 else{if(emps.some(function(e){return e.id.toUpperCase()===eid.toUpperCase()})){alert('Already exists');return}emps.push({id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin});}
-if(editId&&editId!==eid){migrateEmpId(editId,eid);}save();render();}
+save();render();}
 function editEmp(i){var e=emps[i];render();setTimeout(function(){var form=document.getElementById('add-emp-form');if(form)form.classList.remove('hide');
 document.getElementById('edit-emp-id').value=e.id;document.getElementById('emp-form-title').textContent='Edit: '+e.name;
 document.getElementById('nemp-id').value=e.id;document.getElementById('nemp-idn').value=e.idn;document.getElementById('nemp-name').value=e.name;
@@ -703,43 +674,3 @@ w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training M
 w.document.close();setTimeout(function(){w.print()},500);}
 
 init();
-
-
-
-// === INTERACTIVE IFRAME FIX (Supabase serves HTML as text/plain) ===
-async function fixInteractiveIframes(){
-var iframes=document.querySelectorAll('iframe[data-interactive-url]');
-for(var i=0;i<iframes.length;i++){
-var iframe=iframes[i];
-var url=iframe.getAttribute('data-interactive-url');
-if(url&&!iframe.dataset.fixed){
-iframe.dataset.fixed='true';
-try{
-var resp=await fetch(url);
-var html=await resp.text();
-var blob=new Blob([html],{type:'text/html'});
-iframe.src=URL.createObjectURL(blob);
-}catch(e){console.error('Interactive load failed:',e);
-}}}}
-
-// === LISTEN FOR PRE-TEST PASS/FAIL FROM IFRAME ===
-window.addEventListener('message',function(ev){
-if(ev.data&&ev.data.type==='pretest-result'&&ev.data.passed&&ev.data.sopId){
-markInteractive(ev.data.sopId);
-}});
-window.addEventListener('message',function(ev){
-if(ev.data&&ev.data.type==='pretest-continue'){
-setSopTab('test');
-}});
-
-function migrateEmpId(oldId,newId){
-assigns.forEach(function(a){if(a.eid===oldId)a.eid=newId;});
-var progKeys=Object.keys(prog);
-progKeys.forEach(function(k){
-if(k.indexOf(oldId+'_')===0){
-var newKey=newId+k.substring(oldId.length);
-prog[newKey]=prog[k];
-delete prog[k];
-}});
-res.forEach(function(r){if(r.eid===oldId)r.eid=newId;});
-}
