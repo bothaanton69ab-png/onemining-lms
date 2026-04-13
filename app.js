@@ -744,9 +744,6 @@ init();
 
 // ============================================================
 // Wrong-answer review on Final Assessment pass screen
-// Shows employees which questions they got wrong + correct answers
-// Only displays when employee PASSED (80%+). Not shown on fail.
-// ============================================================
 (function(){
   if(window._wrongAnswerReviewInstalled)return;
   window._wrongAnswerReviewInstalled=true;
@@ -755,26 +752,23 @@ init();
     var result=_origRenderAssess.apply(this,arguments);
     if(!assessDone||!assessResult||!assessResult.pass)return result;
     if(!activeSop||!activeSop.qs||!assessAns)return result;
-    if(document.getElementById("wrong-answer-review"))return result;
-    var letters=["A","B","C","D"];
+    var letters=['A','B','C','D'];
     var wrongItems=[];
     activeSop.qs.forEach(function(q,i){
       var chosen=assessAns[q.id];
       if(chosen!==q.c){
         wrongItems.push({num:i+1,question:q.t,
-          yours:(chosen!==undefined&&chosen!==null)?letters[chosen]+") "+q.o[chosen]:"(not answered)",
-          correct:letters[q.c]+") "+q.o[q.c]});
+          yours:(chosen!==undefined&&chosen!==null)?letters[chosen]+') '+q.o[chosen]:'(not answered)',
+          correct:letters[q.c]+') '+q.o[q.c]});
       }
     });
-    var container=document.querySelector(".pc")||document.getElementById("c");
-    if(!container)return result;
     var h='<div id="wrong-answer-review" style="margin-top:24px;padding:24px;background:#f9fafb;border-radius:12px;border:2px solid #e5e7eb;">';
     h+='<h3 style="margin:0 0 16px 0;font-size:18px;color:#1a3a5c;">Review: Your Assessment Answers</h3>';
     if(wrongItems.length===0){
       h+='<div style="padding:16px;background:#ecfdf5;border-radius:8px;border-left:4px solid #10b981;color:#065f46;font-weight:600;">';
       h+='Perfect Score! You answered all questions correctly.</div>';
     }else{
-      h+='<p style="margin:0 0 14px 0;font-size:14px;color:#6b7280;">You got <strong>'+wrongItems.length+'</strong> question'+(wrongItems.length>1?"s":"")+' incorrect. Review below:</p>';
+      h+='<p style="margin:0 0 14px 0;font-size:14px;color:#6b7280;">You got <strong>'+wrongItems.length+'</strong> question'+(wrongItems.length>1?'s':'')+' incorrect. Review below:</p>';
       wrongItems.forEach(function(w){
         h+='<div style="margin-bottom:12px;padding:16px;background:#fff;border-radius:8px;border-left:4px solid #ef4444;">';
         h+='<div style="font-weight:700;color:#1a3a5c;margin-bottom:8px;">Q'+w.num+'. '+w.question+'</div>';
@@ -784,7 +778,7 @@ init();
       });
     }
     h+='</div>';
-    container.insertAdjacentHTML("beforeend",h);
+    result+=h;
     return result;
   };
 })();
