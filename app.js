@@ -752,10 +752,10 @@ init();
   window._wrongAnswerReviewInstalled=true;
   var _origRenderAssess=renderAssess;
   renderAssess=function(){
-    _origRenderAssess.apply(this,arguments);
-    if(!assessDone||!assessResult||!assessResult.pass)return;
-    if(!activeSop||!activeSop.qs||!assessAns)return;
-    if(document.getElementById("wrong-answer-review"))return;
+    var result=_origRenderAssess.apply(this,arguments);
+    if(!assessDone||!assessResult||!assessResult.pass)return result;
+    if(!activeSop||!activeSop.qs||!assessAns)return result;
+    if(document.getElementById("wrong-answer-review"))return result;
     var letters=["A","B","C","D"];
     var wrongItems=[];
     activeSop.qs.forEach(function(q,i){
@@ -767,7 +767,7 @@ init();
       }
     });
     var container=document.querySelector(".pc")||document.getElementById("c");
-    if(!container)return;
+    if(!container)return result;
     var h='<div id="wrong-answer-review" style="margin-top:24px;padding:24px;background:#f9fafb;border-radius:12px;border:2px solid #e5e7eb;">';
     h+='<h3 style="margin:0 0 16px 0;font-size:18px;color:#1a3a5c;">Review: Your Assessment Answers</h3>';
     if(wrongItems.length===0){
@@ -785,5 +785,6 @@ init();
     }
     h+='</div>';
     container.insertAdjacentHTML("beforeend",h);
+    return result;
   };
 })();
