@@ -32,20 +32,37 @@ async function cloudLoad(key, fallback) {
 // Save one key to Supabase
 async function cloudSave(key, value) {
     try {
-        await sb.from('app_data').upsert({ key: key, value: value, updated_at: new Date().toISOString() });
-    } catch(e) { console.error('Save failed for ' + key, e); }
+        var { error } = await sb.from('app_data').upsert({ key: key, value: value, updated_at: new Date().toISOString() });
+        if (error) { console.error('Save error for ' + key, error); return false; }
+        return true;
+    } catch(e) { console.error('Save failed for ' + key, e); return false; }
 }
 
-// Save all data (called after every change)
-function save() {
-    cloudSave('res', res);
-    cloudSave('prog', prog);
-    cloudSave('notifs', notifs);
-    cloudSave('sops', sops);
-    cloudSave('sites', sites);
-    cloudSave('emps', emps);
-    cloudSave('assigns', assigns);
-    cloudSave('unlock', unlockLog);
+// Save all data (called after every change) - now awaits all writes
+async function save() {
+    var results = await Promise.all([
+        cloudSave('res', res),
+        cloudSave('prog', prog),
+        cloudSave('notifs', notifs),
+        cloudSave('sops', sops),
+        cloudSave('sites', sites),
+        cloudSave('emps', emps),
+        cloudSave('assigns', assigns),
+        cloudSave('unlock', unlockLog)
+    ]);
+    var failed = results.filter(function(r){ return !r; }).length;
+    if (failed > 0) { console.error(failed + ' save(s) failed'); return false; }
+    return true;
+}
+
+// Reload just results and progress from Supabase (prevents overwrites between users)
+async function reloadCritical() {
+    try {
+        var latestRes = await cloudLoad('res', []);
+        var latestProg = await cloudLoad('prog', {});
+        res = latestRes;
+        prog = latestProg;
+    } catch(e) { console.error('Reload failed', e); }
 }
 
 // Initialize - load all data from Supabase
@@ -440,7 +457,7 @@ h+='<td>'+(a1?bg(a1.pct+'%',a1.pass?'green':'red'):'—')+'</td>';
 h+='<td>'+(a2?bg(a2.pct+'%',a2.pass?'green':'red'):'—')+'</td>';
 h+='<td>'+(a3?bg(a3.pct+'%',a3.pass?'green':'red'):'—')+'</td>';
 h+='<td>'+(ap?bg('Competent','green'):isLocked(emp.id,sc)?bg('Locked','red'):sr.length?bg('In Progress','gold'):bg('Outstanding','gray'))+'</td>';
-h+='<td>'+(ap?'<button class="btn btn-p btn-sm" onclick="dlProofEmp(\''+emp.id+'\',\''+sc+'\')">📥</button>':'-')+'</td></tr>';
+h+='<td style="white-space:nowrap">'+(ap?'<button class="btn btn-p btn-sm" onclick="dlProofEmp(\''+emp.id+'\',\''+sc+'\')">📥</button>':'<button class="btn btn-gn btn-sm" onclick="markAsPassed(\''+emp.id+'\',\''+sc+'\')" title="Manually mark as passed (certificate verified)">✓ Pass</button>')+'</td></tr>';
 });});
 return h+'</tbody></table></div></div></div>';
 }
@@ -488,21 +505,29 @@ function goPage(p){page=p;activeSop=null;assessStarted=false;assessDone=false;as
 function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()}
 function closeSop(){activeSop=null;render()}
 function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render()}
-function markRead(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=now();save();render()}
-function markVid(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].vw=true;prog[k].vwd=now();save();render()}
-function markInteractive(){var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].ia=true;prog[k].iad=now();save();render()}
+async function markRead(){var k=user.id+'_'+activeSop.code;await reloadCritical();prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=now();var ok=await save();if(!ok)alert('⚠️ Save may have failed — please check your internet and try again.');render()}
+async function markVid(){var k=user.id+'_'+activeSop.code;await reloadCritical();prog[k]=prog[k]||{};prog[k].vw=true;prog[k].vwd=now();var ok=await save();if(!ok)alert('⚠️ Save may have failed — please check your internet and try again.');render()}
+async function markInteractive(){var k=user.id+'_'+activeSop.code;await reloadCritical();prog[k]=prog[k]||{};prog[k].ia=true;prog[k].iad=now();var ok=await save();if(!ok)alert('⚠️ Save may have failed — please check your internet and try again.');render()}
 function startAssess(){assessStarted=true;assessAns={};render()}
-function resetForRetry(){
-var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].sr=false;prog[k].vw=false;
-assessStarted=false;assessDone=false;assessResult=null;assessAns={};save();render();}
+async function resetForRetry(){
+var k=user.id+'_'+activeSop.code;await reloadCritical();prog[k]=prog[k]||{};prog[k].sr=false;prog[k].vw=false;
+assessStarted=false;assessDone=false;assessResult=null;assessAns={};await save();render();}
 function pickAns(qid,oi){assessAns[qid]=oi;render()}
-function submitAssess(){var s=activeSop;if(Object.keys(assessAns).length<s.qs.length){alert('Answer all questions first');return}
+async function submitAssess(){var s=activeSop;if(Object.keys(assessAns).length<s.qs.length){alert('Answer all questions first');return}
 var score=0;s.qs.forEach(function(q){if(assessAns[q.id]===q.c)score++});
+// Reload latest data from cloud BEFORE adding our result (prevents overwriting other employees)
+await reloadCritical();
 var att=getAtt(user.id,s.code);var attN=att.length+1;var pct=Math.round(score/s.qs.length*100);var pass=pct>=80;
 var r={id:gid(),eid:user.id,sc:s.code,score:score,total:s.qs.length,pct:pct,pass:pass,att:attN,dt:now()};
 res.push(r);var emp=emps.find(function(e){return e.id===user.id});
 notifs.unshift({id:gid(),type:pass?'pass':'fail',en:emp?emp.name:user.id,es:emp?emp.site:'',sc:s.code,pct:pct,att:attN,dt:now()});
-save();assessResult=r;assessDone=true;render();}
+// Show saving indicator
+var el=document.getElementById('app');if(el){var overlay=document.createElement('div');overlay.id='save-overlay';overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';overlay.innerHTML='<div style="background:#fff;padding:30px 50px;border-radius:12px;text-align:center"><div style="font-size:1.2rem;font-weight:700;color:#1E3A5F">Saving your result...</div><div style="margin-top:8px;color:#6B7280">Please do not close this page</div></div>';document.body.appendChild(overlay);}
+var ok=await save();
+// Remove overlay
+var ov=document.getElementById('save-overlay');if(ov)ov.remove();
+if(!ok){alert('⚠️ Your result may not have been saved. Please do NOT close this page. Check your internet connection and try clicking Submit again, or contact the Compliance Department.');return;}
+assessResult=r;assessDone=true;render();}
 
 // SOP management
 function toggleAddSop(){var el=document.getElementById('add-sop-form');if(el){el.classList.toggle('hide');if(!el.classList.contains('hide')){document.getElementById('edit-sop-id').value='';document.getElementById('sop-form-title').textContent='New SOP';editSopId=null;document.getElementById('nsop-code').value='';document.getElementById('nsop-rev').value='Rev 1.0';document.getElementById('nsop-title').value='';document.getElementById('nsop-desc').value='';document.getElementById('nsop-cat').value='';document.getElementById('nsop-ia-na').checked=true;}}}
@@ -557,6 +582,25 @@ var added=0;targetEmps.forEach(function(eid){
 if(!assigns.some(function(a){return a.eid===eid&&a.sc===sc})){assigns.push({eid:eid,sc:sc,order:order,dt:now()});added++;}});
 save();render();alert(added+' assignment(s) created.');}
 function removeAssign(eid,sc){assigns=assigns.filter(function(a){return!(a.eid===eid&&a.sc===sc)});save();render()}
+
+// Admin: Mark employee as passed (manually verified via certificate)
+async function markAsPassed(eid,sc){var emp=emps.find(function(e){return e.id===eid});
+var sop=sops.find(function(s){return s.code===sc});
+if(!emp||!sop){alert('Employee or SOP not found');return;}
+if(hasPassed(eid,sc)){alert(emp.name+' already marked as passed for '+sc);return;}
+if(!confirm('Manually mark '+emp.name+' as PASSED for '+sop.title+' ('+sc+')?\n\nThis should only be used when you have verified the employee\'s certificate.')){return;}
+await reloadCritical();
+// Mark all progress steps as done
+var k=eid+'_'+sc;prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=prog[k].srd||now();prog[k].vw=true;prog[k].vwd=prog[k].vwd||now();
+if(sop.interactiveNA===false){prog[k].ia=true;prog[k].iad=prog[k].iad||now();}
+// Add a passing result record
+var qs=sop.qs||[];var total=qs.length||1;
+var r={id:gid(),eid:eid,sc:sc,score:total,total:total,pct:100,pass:true,att:1,dt:now(),manual:true};
+res.push(r);
+notifs.unshift({id:gid(),type:'pass',en:emp.name,es:emp.site,sc:sc,pct:100,att:1,dt:now()});
+var ok=await save();
+if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return;}
+render();alert('✅ '+emp.name+' has been marked as PASSED for '+sc+'. They can now download their proof of competence.');}
 
 // Unlock
 function showUnlock(eid){var emp=emps.find(function(e){return e.id===eid});
@@ -674,111 +718,3 @@ w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training M
 w.document.close();setTimeout(function(){w.print()},500);}
 
 init();
-
-
-// ============================================================
-// Interactive HTML rendering fix + LMS postMessage bridge
-// ============================================================
-(function(){
-  if(window._lmsIframeFixInstalled)return;
-  window._lmsIframeFixInstalled=true;
-
-  function convertIframe(ifr){
-    if(!ifr||ifr.tagName!=="IFRAME")return;
-    if(ifr.dataset._lmsConverted==="1")return;
-    var url=ifr.getAttribute("src")||"";
-    if(!url)return;
-    if(url.indexOf("supabase.co")<0)return;
-    if(url.indexOf(".html")<0)return;
-    ifr.dataset._lmsConverted="1";
-    fetch(url).then(function(r){return r.text();}).then(function(html){
-      ifr.removeAttribute("src");
-      ifr.srcdoc=html;
-    }).catch(function(e){console.warn("LMS iframe convert failed",e);});
-  }
-
-  function scanAll(){
-    document.querySelectorAll("iframe").forEach(convertIframe);
-  }
-
-  if(document.body){
-    scanAll();
-    var obs=new MutationObserver(function(ms){
-      ms.forEach(function(m){
-        m.addedNodes.forEach(function(n){
-          if(n.nodeType!==1)return;
-          if(n.tagName==="IFRAME")convertIframe(n);
-          if(n.querySelectorAll)n.querySelectorAll("iframe").forEach(convertIframe);
-        });
-      });
-    });
-    obs.observe(document.body,{childList:true,subtree:true});
-  }else{
-    document.addEventListener("DOMContentLoaded",scanAll);
-  }
-
-  window.addEventListener("message",function(ev){
-    try{
-      var d=ev.data;
-      if(!d||typeof d!=="object")return;
-      if(d.type!=="pretest-complete"&&d.type!=="interactive-complete")return;
-      console.log("[LMS] Interactive result received:",d);
-      window._lastInteractiveResult=d;
-      if(d.pass&&typeof curEmp!=="undefined"&&curEmp&&typeof curSop!=="undefined"&&curSop){
-        try{
-          var pk=curEmp.id+"_"+curSop.code;
-          if(typeof prog!=="undefined"&&prog){
-            if(!prog[pk])prog[pk]={};
-            prog[pk].ia=true;
-            prog[pk].iaScore=d.score;
-            prog[pk].iaAt=new Date().toISOString();
-            if(typeof save==="function")save();
-            if(typeof render==="function")render();
-          }
-        }catch(e){console.warn("LMS progress update failed",e);}
-      }
-    }catch(e){}
-  });
-})();
-
-
-// ============================================================
-// Wrong-answer review on Final Assessment pass screen
-(function(){
-  if(window._wrongAnswerReviewInstalled)return;
-  window._wrongAnswerReviewInstalled=true;
-  var _origRenderAssess=renderAssess;
-  renderAssess=function(){
-    var result=_origRenderAssess.apply(this,arguments);
-    if(!assessDone||!assessResult||!assessResult.pass)return result;
-    if(!activeSop||!activeSop.qs||!assessAns)return result;
-    var letters=['A','B','C','D'];
-    var wrongItems=[];
-    activeSop.qs.forEach(function(q,i){
-      var chosen=assessAns[q.id];
-      if(chosen!==q.c){
-        wrongItems.push({num:i+1,question:q.t,
-          yours:(chosen!==undefined&&chosen!==null)?letters[chosen]+') '+q.o[chosen]:'(not answered)',
-          correct:letters[q.c]+') '+q.o[q.c]});
-      }
-    });
-    var h='<div id="wrong-answer-review" style="margin-top:24px;padding:24px;background:#f9fafb;border-radius:12px;border:2px solid #e5e7eb;">';
-    h+='<h3 style="margin:0 0 16px 0;font-size:18px;color:#1a3a5c;">Review: Your Assessment Answers</h3>';
-    if(wrongItems.length===0){
-      h+='<div style="padding:16px;background:#ecfdf5;border-radius:8px;border-left:4px solid #10b981;color:#065f46;font-weight:600;">';
-      h+='Perfect Score! You answered all questions correctly.</div>';
-    }else{
-      h+='<p style="margin:0 0 14px 0;font-size:14px;color:#6b7280;">You got <strong>'+wrongItems.length+'</strong> question'+(wrongItems.length>1?'s':'')+' incorrect. Review below:</p>';
-      wrongItems.forEach(function(w){
-        h+='<div style="margin-bottom:12px;padding:16px;background:#fff;border-radius:8px;border-left:4px solid #ef4444;">';
-        h+='<div style="font-weight:700;color:#1a3a5c;margin-bottom:8px;">Q'+w.num+'. '+w.question+'</div>';
-        h+='<div style="color:#991b1b;margin-bottom:4px;font-size:14px;">Your answer: <span style="font-weight:600;">'+w.yours+'</span></div>';
-        h+='<div style="color:#065f46;font-size:14px;">Correct answer: <span style="font-weight:600;">'+w.correct+'</span></div>';
-        h+='</div>';
-      });
-    }
-    h+='</div>';
-    result+=h;
-    return result;
-  };
-})();
