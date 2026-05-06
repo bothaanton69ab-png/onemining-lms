@@ -306,6 +306,11 @@ h+='<h2 style="color:'+(r.pass?'#22C55E':'#EF4444')+'">'+(r.pass?'PASSED':'FAILE
 h+='<p style="font-size:1.6rem;font-weight:700;margin:10px 0">'+r.pct+'%</p>';
 h+='<p style="color:#6B7280">'+r.score+'/'+r.total+' · Attempt '+r.att+'/3 · Pass 80%</p>';
 if(r.pass)h+='<button class="btn btn-p" style="width:auto;margin-top:16px" onclick="dlProof(\''+user.id+'\',\''+activeSop.code+'\','+r.score+','+r.total+','+r.pct+',true,'+r.att+',\''+r.dt+'\')">📥 Download Proof</button>';
+if(r.pass&&r.pct<100){var aq2=assessQs.length?assessQs:s.qs;var wrongs=[];aq2.forEach(function(q,qi){if(assessAns[q.id]!==q.c){wrongs.push({n:qi+1,t:q.t,yours:assessAns[q.id]!==undefined?String.fromCharCode(65+assessAns[q.id])+') '+q.o[assessAns[q.id]]:'No answer',correct:String.fromCharCode(65+q.c)+') '+q.o[q.c]})}});
+if(wrongs.length){h+='</div></div><div class="card" style="margin-top:16px;border-left:4px solid #FBB227"><div class="ch"><h3 style="color:#243034">Review — Questions You Got Wrong</h3></div><div class="cb">';
+h+='<p style="color:#6B7280;margin-bottom:16px;font-size:.85rem">You passed, but review the following to strengthen your understanding:</p>';
+wrongs.forEach(function(w){h+='<div style="padding:12px 0;border-bottom:1px solid #f0f0f0"><div style="font-weight:600;color:#243034;margin-bottom:6px">Q'+w.n+'. '+w.t+'</div><div style="font-size:.85rem;color:#EF4444;margin-bottom:4px">✗ Your answer: '+w.yours+'</div><div style="font-size:.85rem;color:#22C55E;font-weight:600">✓ Correct answer: '+w.correct+'</div></div>'});
+h+='</div>';}}
 if(!r.pass&&r.att<3)h+='<p style="color:#6B7280;margin-top:16px;font-size:.85rem">You must re-read the SOP and re-watch the video before your next attempt.</p><button class="btn btn-p" style="width:auto;margin-top:12px" onclick="resetForRetry()">Re-do Training (Attempt '+(r.att+1)+'/3)</button>';
 if(!r.pass&&r.att>=3)h+='<p style="color:#EF4444;font-weight:600;margin-top:14px">All 3 attempts used. Contact your administrator.</p>';
 return h+'</div></div>';}
