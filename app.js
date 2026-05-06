@@ -278,7 +278,7 @@ if(!isA&&!pr.vw)h+='<div style="text-align:center"><button class="btn btn-p" sty
 if(!isA&&pr.vw)h+='<p style="text-align:center;color:#22C55E;font-weight:600">Completed '+fd(pr.vwd)+'</p>';
 h+='</div>';}
 if(!isA&&!s.interactiveNA&&tab==='interactive'){h+='<div style="max-width:860px;margin:0 auto">';
-if(s.interactiveUrl)h+='<iframe id="interactive-frame" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe><script>fetch("'+s.interactiveUrl+'").then(function(r){return r.text()}).then(function(html){var frame=document.getElementById("interactive-frame");var blob=new Blob([html],{type:"text/html"});frame.src=URL.createObjectURL(blob)}).catch(function(){document.getElementById("interactive-frame").src="'+s.interactiveUrl+'"});<\/script>';
+if(s.interactiveUrl)h+='<iframe src="'+s.interactiveUrl+'" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
 else h+='<div class="card"><div class="cb" style="text-align:center;padding:28px;color:#6B7280">No interactive assessment uploaded yet.</div></div>';
 if(!pr.ia)h+='<div style="text-align:center;margin-top:16px"><button class="btn btn-p" style="width:auto;padding:12px 44px" onclick="markInteractive()">✓ I have completed the interactive training</button></div>';
 if(pr.ia)h+='<p style="text-align:center;margin-top:12px;color:#22C55E;font-weight:600">Completed '+fd(pr.iad)+'</p>';
