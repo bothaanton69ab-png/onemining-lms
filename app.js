@@ -16,7 +16,7 @@ var sops=[];
 
 var adminPass='admin';
 var editSopId=null;
-var user=null,page='login',activeSop=null,assessAns={},assessStarted=false,assessDone=false,assessResult=null;
+var user=null,page='login',activeSop=null,assessAns={},assessStarted=false,assessDone=false,assessResult=null,assessQs=[];
 var qmSopId=null,qmMode='add',qmQt='',qmOpts=['','','',''],qmCor=0,qmBulk='',qmEi=null;
 var adminSiteF='all',adminSopF='all',adminEmpF='';
 
@@ -122,6 +122,8 @@ else if(page==='anot'&&isA)mc+=renderANot();
 else if(page==='smgmt'&&isA)mc+=renderSMgmt();
 mc+='</main>';
 el.innerHTML='<div class="app">'+sb+mc+'</div>';
+// Post-render: inject interactive HTML into iframe if present
+setTimeout(function(){var frame=document.getElementById('ia-frame');if(frame&&activeSop&&activeSop.interactiveHtml){var doc=frame.contentDocument||frame.contentWindow.document;doc.open();doc.write(activeSop.interactiveHtml);doc.close();}},50);
 }
 
 function renderLogin(){
@@ -278,7 +280,8 @@ if(!isA&&!pr.vw)h+='<div style="text-align:center"><button class="btn btn-p" sty
 if(!isA&&pr.vw)h+='<p style="text-align:center;color:#22C55E;font-weight:600">Completed '+fd(pr.vwd)+'</p>';
 h+='</div>';}
 if(!isA&&!s.interactiveNA&&tab==='interactive'){h+='<div style="max-width:860px;margin:0 auto">';
-if(s.interactiveUrl)h+='<iframe src="'+s.interactiveUrl+'" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
+if(s.interactiveUrl&&s.interactiveHtml)h+='<iframe id="ia-frame" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
+else if(s.interactiveUrl)h+='<iframe src="'+s.interactiveUrl+'" style="width:100%;height:80vh;border:1px solid #e5e7eb;border-radius:10px"></iframe>';
 else h+='<div class="card"><div class="cb" style="text-align:center;padding:28px;color:#6B7280">No interactive assessment uploaded yet.</div></div>';
 if(!pr.ia)h+='<div style="text-align:center;margin-top:16px"><button class="btn btn-p" style="width:auto;padding:12px 44px" onclick="markInteractive()">✓ I have completed the interactive training</button></div>';
 if(pr.ia)h+='<p style="text-align:center;margin-top:12px;color:#22C55E;font-weight:600">Completed '+fd(pr.iad)+'</p>';
@@ -306,11 +309,11 @@ if(r.pass)h+='<button class="btn btn-p" style="width:auto;margin-top:16px" oncli
 if(!r.pass&&r.att<3)h+='<p style="color:#6B7280;margin-top:16px;font-size:.85rem">You must re-read the SOP and re-watch the video before your next attempt.</p><button class="btn btn-p" style="width:auto;margin-top:12px" onclick="resetForRetry()">Re-do Training (Attempt '+(r.att+1)+'/3)</button>';
 if(!r.pass&&r.att>=3)h+='<p style="color:#EF4444;font-weight:600;margin-top:14px">All 3 attempts used. Contact your administrator.</p>';
 return h+'</div></div>';}
-if(!assessStarted)return'<div class="card"><div class="cb" style="text-align:center;padding:40px"><h3>'+s.qs.length+' MCQs · 80% pass · Attempt '+(att.length+1)+'/3</h3><button class="btn btn-p" style="width:auto;margin-top:20px;padding:12px 44px" onclick="startAssess()">Start Assessment</button></div></div>';
-var cnt=Object.keys(assessAns).length;
-var h='<div style="max-width:780px;margin:0 auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-weight:600">'+cnt+'/'+s.qs.length+'</span><div class="pb" style="flex:1;margin:0 14px;max-width:280px"><div class="pf gd" style="width:'+(cnt/s.qs.length*100)+'%"></div></div><span style="font-weight:600;color:#FBB227">Attempt '+(att.length+1)+'/3</span></div>';
-s.qs.forEach(function(q,qi){
-h+='<div class="qc"><div class="qn">Question '+(qi+1)+'/'+s.qs.length+'</div><div class="qt">'+q.t+'</div>';
+if(!assessStarted){var dispN=Math.min(15,s.qs.length);return'<div class="card"><div class="cb" style="text-align:center;padding:40px"><h3>'+dispN+' MCQs · 80% pass · Attempt '+(att.length+1)+'/3</h3>'+(s.qs.length>15?'<p style="color:#6B7280;margin-top:8px;font-size:.85rem">Questions are randomly selected from a bank of '+s.qs.length+'</p>':'')+'<button class="btn btn-p" style="width:auto;margin-top:20px;padding:12px 44px" onclick="startAssess()">Start Assessment</button></div></div>';}
+var aq=assessQs.length?assessQs:s.qs;var cnt=Object.keys(assessAns).length;
+var h='<div style="max-width:780px;margin:0 auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-weight:600">'+cnt+'/'+aq.length+'</span><div class="pb" style="flex:1;margin:0 14px;max-width:280px"><div class="pf gd" style="width:'+(cnt/aq.length*100)+'%"></div></div><span style="font-weight:600;color:#FBB227">Attempt '+(att.length+1)+'/3</span></div>';
+aq.forEach(function(q,qi){
+h+='<div class="qc"><div class="qn">Question '+(qi+1)+'/'+aq.length+'</div><div class="qt">'+q.t+'</div>';
 q.o.forEach(function(o,oi){h+='<div class="op'+(assessAns[q.id]===oi?' sel':'')+'" onclick="pickAns(\''+q.id+'\','+oi+')"><span class="lt">'+String.fromCharCode(65+oi)+'</span><span>'+o+'</span></div>'});
 h+='</div>';});
 h+='<div style="text-align:center;padding:20px 0"><button class="btn btn-p" style="width:auto;padding:14px 56px" onclick="submitAssess()">Submit Assessment</button></div></div>';
@@ -501,24 +504,24 @@ if(!emp){document.getElementById('login-err').textContent='Employee not found';r
 if(pin!==emp.pin){document.getElementById('login-err').textContent='Incorrect PIN';return}
 user=emp;page='dashboard';render();}
 function doLogout(){user=null;page='login';activeSop=null;render()}
-function goPage(p){page=p;activeSop=null;assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()}
-function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};render()}
+function goPage(p){page=p;activeSop=null;assessStarted=false;assessDone=false;assessResult=null;assessAns={};assessQs=[];render()}
+function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};assessQs=[];render()}
 function closeSop(){activeSop=null;render()}
 function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render()}
 async function markRead(){var k=user.id+'_'+activeSop.code;await reloadCritical();prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=now();var ok=await save();if(!ok)alert('⚠️ Save may have failed — please check your internet and try again.');render()}
 async function markVid(){var k=user.id+'_'+activeSop.code;await reloadCritical();prog[k]=prog[k]||{};prog[k].vw=true;prog[k].vwd=now();var ok=await save();if(!ok)alert('⚠️ Save may have failed — please check your internet and try again.');render()}
 async function markInteractive(){var k=user.id+'_'+activeSop.code;await reloadCritical();prog[k]=prog[k]||{};prog[k].ia=true;prog[k].iad=now();var ok=await save();if(!ok)alert('⚠️ Save may have failed — please check your internet and try again.');render()}
-function startAssess(){assessStarted=true;assessAns={};render()}
+function startAssess(){assessStarted=true;assessAns={};var s=activeSop;var pool=s.qs.slice();for(var i=pool.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=pool[i];pool[i]=pool[j];pool[j]=tmp}assessQs=pool.slice(0,Math.min(15,pool.length));render()}
 async function resetForRetry(){
 var k=user.id+'_'+activeSop.code;await reloadCritical();prog[k]=prog[k]||{};prog[k].sr=false;prog[k].vw=false;
-assessStarted=false;assessDone=false;assessResult=null;assessAns={};await save();render();}
+assessStarted=false;assessDone=false;assessResult=null;assessAns={};assessQs=[];await save();render();}
 function pickAns(qid,oi){assessAns[qid]=oi;render()}
-async function submitAssess(){var s=activeSop;if(Object.keys(assessAns).length<s.qs.length){alert('Answer all questions first');return}
-var score=0;s.qs.forEach(function(q){if(assessAns[q.id]===q.c)score++});
+async function submitAssess(){var s=activeSop;var aq=assessQs.length?assessQs:s.qs;if(Object.keys(assessAns).length<aq.length){alert('Answer all questions first');return}
+var score=0;aq.forEach(function(q){if(assessAns[q.id]===q.c)score++});
 // Reload latest data from cloud BEFORE adding our result (prevents overwriting other employees)
 await reloadCritical();
-var att=getAtt(user.id,s.code);var attN=att.length+1;var pct=Math.round(score/s.qs.length*100);var pass=pct>=80;
-var r={id:gid(),eid:user.id,sc:s.code,score:score,total:s.qs.length,pct:pct,pass:pass,att:attN,dt:now()};
+var att=getAtt(user.id,s.code);var attN=att.length+1;var pct=Math.round(score/aq.length*100);var pass=pct>=80;
+var r={id:gid(),eid:user.id,sc:s.code,score:score,total:aq.length,pct:pct,pass:pass,att:attN,dt:now()};
 res.push(r);var emp=emps.find(function(e){return e.id===user.id});
 notifs.unshift({id:gid(),type:pass?'pass':'fail',en:emp?emp.name:user.id,es:emp?emp.site:'',sc:s.code,pct:pct,att:attN,dt:now()});
 // Show saving indicator
@@ -541,7 +544,7 @@ save();render();}
 function delSop(id){sops=sops.filter(function(s){return s.id!==id});save();render()}
 function uploadDoc(sid){var inp=document.createElement('input');inp.type='file';inp.accept='.pdf';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var path='sop-docs/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.docUrl=urlData.publicUrl;sop.docName=f.name;save();render();alert('Document uploaded!')};inp.click()}
 function uploadVid(sid){var inp=document.createElement('input');inp.type='file';inp.accept='video/*';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;if(f.size>100*1024*1024){alert('Max 100MB. For larger videos, upload to YouTube and paste the link.');return}var path='sop-vids/'+sid+'_'+Date.now()+'_'+f.name;var {data,error}=await sb.storage.from('lms-files').upload(path,f);if(error){alert('Upload failed: '+error.message);return}var {data:urlData}=sb.storage.from('lms-files').getPublicUrl(path);var sop=sops.find(function(s){return s.id===sid});sop.vidUrl=urlData.publicUrl;sop.vidName=f.name;save();render();alert('Video uploaded!')};inp.click()}
-function uploadInteractive(sid){var sop=sops.find(function(s){return s.id===sid});if(sop.interactiveNA){alert('Interactive assessment is set to N/A for this SOP. Change it to "Enabled" first.');return}var inp=document.createElement('input');inp.type='file';inp.accept='.html';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var reader=new FileReader();reader.onload=async function(){var base64=reader.result.split(',')[1];sop.interactiveUrl='data:text/html;base64,'+base64;sop.interactiveName=f.name;await save();render();alert('Interactive assessment uploaded!')};reader.readAsDataURL(f)};inp.click()}
+function uploadInteractive(sid){var sop=sops.find(function(s){return s.id===sid});if(sop.interactiveNA){alert('Interactive assessment is set to N/A for this SOP. Change it to "Enabled" first.');return}var inp=document.createElement('input');inp.type='file';inp.accept='.html';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;var reader=new FileReader();reader.onload=async function(){sop.interactiveHtml=reader.result;sop.interactiveName=f.name;sop.interactiveUrl='embedded';await save();render();alert('Interactive assessment uploaded!')};reader.readAsText(f)};inp.click()}
 function toggleInteractiveNA(sid){var sop=sops.find(function(s){return s.id===sid});sop.interactiveNA=!sop.interactiveNA;if(sop.interactiveNA){sop.interactiveUrl=null;sop.interactiveName=null;}save();render()}
 function editSop(id){var s=sops.find(function(x){return x.id===id});if(!s)return;editSopId=id;render();setTimeout(function(){var form=document.getElementById('add-sop-form');if(form)form.classList.remove('hide');document.getElementById('sop-form-title').textContent='Edit SOP: '+s.code;document.getElementById('edit-sop-id').value=id;document.getElementById('nsop-code').value=s.code;document.getElementById('nsop-rev').value=s.rev;document.getElementById('nsop-title').value=s.title;document.getElementById('nsop-desc').value=s.desc;document.getElementById('nsop-cat').value=s.cat;document.getElementById('nsop-site').value=s.site;document.getElementById('nsop-ia-na').checked=s.interactiveNA!==false;},50)}
 
