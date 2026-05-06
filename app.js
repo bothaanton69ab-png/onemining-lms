@@ -460,7 +460,8 @@ h+='<td>'+(a1?bg(a1.pct+'%',a1.pass?'green':'red'):'—')+'</td>';
 h+='<td>'+(a2?bg(a2.pct+'%',a2.pass?'green':'red'):'—')+'</td>';
 h+='<td>'+(a3?bg(a3.pct+'%',a3.pass?'green':'red'):'—')+'</td>';
 h+='<td>'+(ap?bg('Competent','green'):isLocked(emp.id,sc)?bg('Locked','red'):sr.length?bg('In Progress','gold'):bg('Outstanding','gray'))+'</td>';
-h+='<td style="white-space:nowrap">'+(ap?'<button class="btn btn-p btn-sm" onclick="dlProofEmp(\''+emp.id+'\',\''+sc+'\')">📥</button>':'<button class="btn btn-gn btn-sm" onclick="markAsPassed(\''+emp.id+'\',\''+sc+'\')" title="Manually mark as passed (certificate verified)">✓ Pass</button>')+'</td></tr>';
+var lk2=isLocked(emp.id,sc);
+h+='<td style="white-space:nowrap">'+(ap?'<button class="btn btn-p btn-sm" onclick="dlProofEmp(\''+emp.id+'\',\''+sc+'\')">📥</button>':(lk2?'<button class="btn btn-o btn-sm" onclick="resetAttempts(\''+emp.id+'\',\''+sc+'\')" title="Reset attempts so employee can retry">🔄 Reset</button> ':'')+'<button class="btn btn-gn btn-sm" onclick="markAsPassed(\''+emp.id+'\',\''+sc+'\')" title="Manually mark as passed (certificate verified)">✓ Pass</button>')+'</td></tr>';
 });});
 return h+'</tbody></table></div></div></div>';
 }
@@ -604,6 +605,19 @@ notifs.unshift({id:gid(),type:'pass',en:emp.name,es:emp.site,sc:sc,pct:100,att:1
 var ok=await save();
 if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return;}
 render();alert('✅ '+emp.name+' has been marked as PASSED for '+sc+'. They can now download their proof of competence.');}
+
+async function resetAttempts(eid,sc){var emp=emps.find(function(e){return e.id===eid});
+var sop=sops.find(function(s){return s.code===sc});
+if(!emp||!sop){alert('Employee or SOP not found');return;}
+var att=getAtt(eid,sc);
+if(!confirm('Reset all '+att.length+' failed attempts for '+emp.name+' on '+sop.title+' ('+sc+')?\n\nThis will remove their failed results and reset their progress so they can redo the full training module from scratch (read SOP, watch video, interactive, then assessment).\n\nOnly do this if you are satisfied the lock-out was due to a system issue.')){return;}
+await reloadCritical();
+res=res.filter(function(r){return!(r.eid===eid&&r.sc===sc)});
+var k=eid+'_'+sc;prog[k]=prog[k]||{};prog[k].sr=false;prog[k].vw=false;prog[k].ia=false;
+unlockLog.push({eid:eid,sc:sc,dt:now(),reason:'Admin reset attempts'});
+var ok=await save();
+if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return;}
+render();alert('✅ '+emp.name+' has been reset for '+sc+'. They can now redo the full training module from the beginning.');}
 
 // Unlock
 function showUnlock(eid){var emp=emps.find(function(e){return e.id===eid});
