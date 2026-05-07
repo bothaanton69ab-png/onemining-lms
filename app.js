@@ -2,12 +2,7 @@
 function gid(){return Math.random().toString(36).substr(2,9)}
 function now(){return new Date().toISOString()}
 function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}
-function fdt(d){if(!d)return'-';var x=new Date(d);return x.toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})+' '+x.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
-// HTML-escape user-supplied data to prevent rendering issues (mojibake, broken markup) and XSS
-function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
-// Strip non-printable / replacement chars (the mojibake pattern) from imported data — Unicode escapes only so source stays ASCII
-function clean(s){if(s==null)return'';return String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFFFD]/g,'').trim()}
 
 // Data variables (loaded from Supabase on init)
 var sites=[];
@@ -18,19 +13,12 @@ var notifs=[];
 var assigns=[];
 var unlockLog=[];
 var sops=[];
-var auditLog=[]; // Admin corrections audit trail (MHSA s.10)
 
 var adminPass='admin';
 var editSopId=null;
 var user=null,page='login',activeSop=null,assessAns={},assessStarted=false,assessDone=false,assessResult=null,assessQs=[];
 var qmSopId=null,qmMode='add',qmQt='',qmOpts=['','','',''],qmCor=0,qmBulk='',qmEi=null;
 var adminSiteF='all',adminSopF='all',adminEmpF='';
-var modalView=null; // {type:'pass'|'revoke'|'edit'|'reset'|'audit', eid, sc}
-
-// Audit log helper — every admin correction must call this
-function logAudit(action,eid,sc,before,after,reason){
-auditLog.unshift({id:gid(),dt:now(),admin:(user&&user.name)||'System',action:action,eid:eid||'',sc:sc||'',before:before||null,after:after||null,reason:reason||''});
-}
 
 // Load one key from Supabase
 async function cloudLoad(key, fallback) {
@@ -60,8 +48,7 @@ async function save() {
         cloudSave('sites', sites),
         cloudSave('emps', emps),
         cloudSave('assigns', assigns),
-        cloudSave('unlock', unlockLog),
-        cloudSave('audit', auditLog)
+        cloudSave('unlock', unlockLog)
     ]);
     var failed = results.filter(function(r){ return !r; }).length;
     if (failed > 0) { console.error(failed + ' save(s) failed'); return false; }
@@ -89,10 +76,7 @@ async function init() {
         assigns = await cloudLoad('assigns', []);
         unlockLog = await cloudLoad('unlock', []);
         sops = await cloudLoad('sops', []);
-        auditLog = await cloudLoad('audit', []);
         adminPass = await cloudLoad('admin_password', 'admin');
-        // Listen for scores posted by interactive HTML iframes (auto-pass detection)
-        window.addEventListener('message', handleInteractiveScore);
         render();
     } catch(e) {
         console.error('Failed to load data:', e);
@@ -463,129 +447,31 @@ h+='<div style="display:flex;gap:10px"><button class="btn btn-p" style="width:au
 var males=emps.filter(function(e){return e.gender==='Male'}).length;
 h+='<div class="sg"><div class="sc gd"><div class="l">Total</div><div class="v">'+emps.length+'</div></div><div class="sc bl"><div class="l">Male</div><div class="v">'+males+'</div></div><div class="sc rd"><div class="l">Female</div><div class="v">'+(emps.length-males)+'</div></div></div>';
 h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>ID Number</th><th>Name</th><th>Gender</th><th>Dept</th><th>Site</th><th>PIN</th><th>Actions</th></tr></thead><tbody>';
-emps.forEach(function(e,i){var idnClean=clean(e.idn);var idnSuspect=String(e.idn||'')!==idnClean&&e.idn;h+='<tr><td style="font-weight:700;color:#FBB227">'+esc(e.id)+'</td><td style="font-size:.78rem">'+esc(idnClean)+(idnSuspect?' <span title="ID number contained non-printable characters that were cleaned. Click Edit to correct." style="color:#EA580C;font-size:.7rem">⚠</span>':'')+'</td><td style="font-weight:600">'+esc(e.name)+'</td><td>'+bg(esc(e.gender),e.gender==='Male'?'blue':'gold')+'</td><td>'+esc(e.dept)+'</td><td>'+esc(e.site)+'</td><td style="font-size:.78rem">'+esc(e.pin)+'</td><td><div style="display:flex;gap:5px"><button class="btn btn-o btn-sm" onclick="editEmp('+i+')">Edit</button><button class="btn btn-d btn-sm" onclick="deleteEmp(\''+esc(e.id)+'\')">Del</button></div></td></tr>'});
+emps.forEach(function(e,i){h+='<tr><td style="font-weight:700;color:#FBB227">'+e.id+'</td><td style="font-size:.78rem">'+e.idn+'</td><td style="font-weight:600">'+e.name+'</td><td>'+bg(e.gender,e.gender==='Male'?'blue':'gold')+'</td><td>'+e.dept+'</td><td>'+e.site+'</td><td style="font-size:.78rem">'+e.pin+'</td><td><div style="display:flex;gap:5px"><button class="btn btn-o btn-sm" onclick="editEmp('+i+')">Edit</button><button class="btn btn-d btn-sm" onclick="deleteEmp(\''+e.id+'\')">Del</button></div></td></tr>'});
 return h+'</tbody></table></div></div></div>';
 }
 
 // === EMPLOYEE RECORDS ===
 function renderEmpRec(){
-var h='<div class="topbar"><h1>Employee Records</h1><div style="display:flex;gap:8px"><button class="btn btn-o btn-sm" onclick="showAuditLog()">📜 Audit Log ('+auditLog.length+')</button></div></div><div class="pc">';
-h+='<div class="card" style="margin-bottom:14px"><div class="cb" style="padding:12px 18px;background:#FFFBEB;border-left:4px solid #FBB227"><p style="font-size:.82rem;color:#7c5e1f;margin:0"><b>Admin actions are logged.</b> Reset clears all attempts. Revoke removes a Pass. Edit lets you correct a recorded score. Every action requires a reason and is captured in the Audit Log for MHSA s.10 compliance.</p></div></div>';
-h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>ID</th><th>Name</th><th>Gender</th><th>Site</th><th>SOP</th><th>1st</th><th>2nd</th><th>3rd</th><th>Status</th><th>Admin Actions</th></tr></thead><tbody>';
+var h='<div class="topbar"><h1>Employee Records</h1></div><div class="pc">';
+h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>ID</th><th>Name</th><th>Gender</th><th>Site</th><th>SOP</th><th>1st</th><th>2nd</th><th>3rd</th><th>Status</th><th>Proof</th></tr></thead><tbody>';
 emps.forEach(function(emp){
 var ea=getEmpAssigns(emp.id);
-if(!ea.length){h+='<tr><td style="font-weight:600">'+esc(emp.id)+'</td><td style="font-size:.78rem">'+esc(clean(emp.idn))+'</td><td>'+esc(emp.name)+'</td><td>'+esc(emp.gender)+'</td><td>'+esc(emp.site)+'</td><td colspan="5" style="text-align:center;color:#6B7280">No training assigned</td><td>-</td></tr>';return;}
+if(!ea.length){h+='<tr><td style="font-weight:600">'+emp.id+'</td><td style="font-size:.78rem">'+emp.idn+'</td><td>'+emp.name+'</td><td>'+emp.gender+'</td><td>'+emp.site+'</td><td colspan="5" style="text-align:center;color:#6B7280">No training assigned</td><td>-</td></tr>';return;}
 ea.forEach(function(a,si){var sc=a.sc;var sr=getAtt(emp.id,sc);
 var a1=sr.find(function(r){return r.att===1}),a2=sr.find(function(r){return r.att===2}),a3=sr.find(function(r){return r.att===3});
 var ap=sr.some(function(r){return r.pass});var sop=sops.find(function(x){return x.code===sc});
 h+='<tr>';
-if(si===0){h+='<td style="font-weight:600" rowspan="'+ea.length+'">'+esc(emp.id)+'</td><td style="font-size:.78rem" rowspan="'+ea.length+'">'+esc(clean(emp.idn))+'</td><td rowspan="'+ea.length+'">'+esc(emp.name)+'</td><td rowspan="'+ea.length+'">'+esc(emp.gender)+'</td><td rowspan="'+ea.length+'">'+esc(emp.site)+'</td>';}
-h+='<td><span style="font-size:.7rem;font-weight:700;color:#FBB227">'+esc(sc)+'</span></td>';
+if(si===0){h+='<td style="font-weight:600" rowspan="'+ea.length+'">'+emp.id+'</td><td style="font-size:.78rem" rowspan="'+ea.length+'">'+emp.idn+'</td><td rowspan="'+ea.length+'">'+emp.name+'</td><td rowspan="'+ea.length+'">'+emp.gender+'</td><td rowspan="'+ea.length+'">'+emp.site+'</td>';}
+h+='<td><span style="font-size:.7rem;font-weight:700;color:#FBB227">'+sc+'</span></td>';
 h+='<td>'+(a1?bg(a1.pct+'%',a1.pass?'green':'red'):'—')+'</td>';
 h+='<td>'+(a2?bg(a2.pct+'%',a2.pass?'green':'red'):'—')+'</td>';
 h+='<td>'+(a3?bg(a3.pct+'%',a3.pass?'green':'red'):'—')+'</td>';
 h+='<td>'+(ap?bg('Competent','green'):isLocked(emp.id,sc)?bg('Locked','red'):sr.length?bg('In Progress','gold'):bg('Outstanding','gray'))+'</td>';
 var lk2=isLocked(emp.id,sc);
-var actions='';
-if(ap){
-actions+='<button class="btn btn-p btn-sm" onclick="dlProofEmp(\''+emp.id+'\',\''+sc+'\')" title="Download proof of competence">📥</button> ';
-actions+='<button class="btn btn-o btn-sm" onclick="openRevokeModal(\''+emp.id+'\',\''+sc+'\')" title="Revoke the Pass">↩ Revoke</button> ';
-actions+='<button class="btn btn-bl btn-sm" onclick="openEditModal(\''+emp.id+'\',\''+sc+'\')" title="Edit recorded score">✎ Edit</button> ';
-actions+='<button class="btn btn-d btn-sm" onclick="openResetModal(\''+emp.id+'\',\''+sc+'\')" title="Clear all attempts">🔄 Reset</button>';
-}else if(lk2){
-actions+='<button class="btn btn-o btn-sm" onclick="openResetModal(\''+emp.id+'\',\''+sc+'\')" title="Clear failed attempts">🔄 Reset</button> ';
-actions+='<button class="btn btn-gn btn-sm" onclick="openPassModal(\''+emp.id+'\',\''+sc+'\')" title="Manually mark as Pass">✓ Mark Pass</button>';
-}else{
-actions+='<button class="btn btn-gn btn-sm" onclick="openPassModal(\''+emp.id+'\',\''+sc+'\')" title="Manually mark as Pass">✓ Mark Pass</button>';
-if(sr.length){actions+=' <button class="btn btn-bl btn-sm" onclick="openEditModal(\''+emp.id+'\',\''+sc+'\')" title="Edit a recorded attempt">✎ Edit</button>';
-actions+=' <button class="btn btn-o btn-sm" onclick="openResetModal(\''+emp.id+'\',\''+sc+'\')" title="Clear attempts">🔄 Reset</button>';}
-}
-h+='<td style="white-space:nowrap">'+actions+'</td></tr>';
+h+='<td style="white-space:nowrap">'+(ap?'<button class="btn btn-p btn-sm" onclick="dlProofEmp(\''+emp.id+'\',\''+sc+'\')">📥</button>':(lk2?'<button class="btn btn-o btn-sm" onclick="resetAttempts(\''+emp.id+'\',\''+sc+'\')" title="Reset attempts so employee can retry">🔄 Reset</button> ':'')+'<button class="btn btn-gn btn-sm" onclick="markAsPassed(\''+emp.id+'\',\''+sc+'\')" title="Manually mark as passed (certificate verified)">✓ Pass</button>')+'</td></tr>';
 });});
-h+='</tbody></table></div></div></div>';
-if(modalView){h+=renderAdminModal();}
-return h;
-}
-
-// === ADMIN MODAL RENDERER ===
-function renderAdminModal(){
-if(!modalView)return'';
-var emp=emps.find(function(e){return e.id===modalView.eid});
-var sop=sops.find(function(s){return s.code===modalView.sc});
-if(modalView.type!=='audit'&&(!emp||!sop))return'';
-var t=modalView.type;
-var sr=t!=='audit'?getAtt(modalView.eid,modalView.sc):[];
-var passR=sr.find(function(r){return r.pass});
-var lastR=sr.length?sr[sr.length-1]:null;
-var h='<div class="mbg" onclick="if(event.target===this)closeAdminModal()"><div class="mdl" style="max-width:680px"><div class="mh">';
-if(t==='pass')h+='<h2 style="color:#22C55E">✓ Mark as Passed (Manual Override)</h2>';
-else if(t==='revoke')h+='<h2 style="color:#EA580C">↩ Revoke Pass</h2>';
-else if(t==='edit')h+='<h2 style="color:#2563EB">✎ Edit Recorded Result</h2>';
-else if(t==='reset')h+='<h2 style="color:#DC2626">🔄 Reset All Attempts</h2>';
-else if(t==='audit')h+='<h2>📜 Admin Action Audit Log</h2>';
-h+='<button class="btn btn-o btn-sm" onclick="closeAdminModal()">Close</button></div><div class="mbd">';
-if(t==='audit'){
-if(!auditLog.length)h+='<p style="text-align:center;color:#6B7280;padding:30px">No admin corrections recorded yet.</p>';
-else{
-h+='<p style="font-size:.82rem;color:#6B7280;margin-bottom:14px">All admin corrections to training records are logged here. This is your MHSA s.10 audit trail.</p>';
-h+='<div class="tw"><table><thead><tr><th>Date / Time</th><th>Admin</th><th>Action</th><th>Employee</th><th>SOP</th><th>Reason</th></tr></thead><tbody>';
-auditLog.slice(0,200).forEach(function(a){
-var e2=emps.find(function(x){return x.id===a.eid});
-var actCol=a.action==='PASS_MANUAL'?'#22C55E':a.action==='REVOKE'?'#EA580C':a.action==='EDIT'?'#2563EB':a.action==='RESET'?'#DC2626':'#6B7280';
-h+='<tr><td style="font-size:.74rem">'+fdt(a.dt)+'</td><td style="font-size:.78rem">'+esc(a.admin)+'</td><td style="font-weight:700;color:'+actCol+';font-size:.78rem">'+esc(a.action)+'</td><td style="font-size:.78rem">'+esc(e2?e2.name+' ('+a.eid+')':a.eid||'—')+'</td><td style="font-size:.78rem;color:#FBB227;font-weight:600">'+esc(a.sc||'—')+'</td><td style="font-size:.78rem">'+esc(a.reason)+'</td></tr>';
-});
-h+='</tbody></table></div>';
-if(auditLog.length>200)h+='<p style="font-size:.78rem;color:#6B7280;margin-top:10px">Showing 200 most recent of '+auditLog.length+' entries.</p>';
-}
-h+='<div style="margin-top:16px;text-align:right"><button class="btn btn-o" style="width:auto" onclick="dlAuditLog()">📥 Download Audit Log (CSV)</button></div>';
-return h+'</div></div></div>';
-}
-h+='<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
-h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:.86rem">';
-h+='<div><b style="color:#6B7280;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px">Employee</b><br><span style="font-weight:700;font-size:1rem">'+esc(emp.name)+'</span><br><span style="font-size:.78rem;color:#6B7280">'+esc(emp.id)+' · '+esc(emp.site)+'</span></div>';
-h+='<div><b style="color:#6B7280;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px">Training Module</b><br><span style="font-weight:700;font-size:1rem;color:#FBB227">'+esc(sop.code)+'</span><br><span style="font-size:.78rem">'+esc(sop.title)+'</span></div>';
-h+='</div></div>';
-if(sr.length){
-h+='<div style="margin-bottom:16px"><b style="font-size:.78rem;color:#6B7280;text-transform:uppercase;letter-spacing:.5px">Recorded Attempts</b>';
-h+='<table style="width:100%;margin-top:6px;font-size:.82rem;border-collapse:collapse"><thead><tr style="background:#F3F4F6"><th style="text-align:left;padding:6px 10px;border:1px solid #E5E7EB">Att</th><th style="text-align:left;padding:6px 10px;border:1px solid #E5E7EB">Score</th><th style="text-align:left;padding:6px 10px;border:1px solid #E5E7EB">%</th><th style="text-align:left;padding:6px 10px;border:1px solid #E5E7EB">Result</th><th style="text-align:left;padding:6px 10px;border:1px solid #E5E7EB">Date</th><th style="text-align:left;padding:6px 10px;border:1px solid #E5E7EB">Source</th></tr></thead><tbody>';
-sr.forEach(function(r){h+='<tr><td style="padding:6px 10px;border:1px solid #E5E7EB">'+r.att+'/3</td><td style="padding:6px 10px;border:1px solid #E5E7EB">'+r.score+'/'+r.total+'</td><td style="padding:6px 10px;border:1px solid #E5E7EB;font-weight:600">'+r.pct+'%</td><td style="padding:6px 10px;border:1px solid #E5E7EB;color:'+(r.pass?'#22C55E':'#EF4444')+';font-weight:600">'+(r.pass?'PASS':'FAIL')+'</td><td style="padding:6px 10px;border:1px solid #E5E7EB">'+fd(r.dt)+'</td><td style="padding:6px 10px;border:1px solid #E5E7EB;font-size:.74rem">'+(r.manual?'Manual':r.interactive?'Interactive':'Assessment')+'</td></tr>';});
-h+='</tbody></table></div>';
-}else{
-h+='<div style="background:#FEF3C7;border-left:4px solid #FBB227;padding:12px 16px;margin-bottom:16px;border-radius:0 6px 6px 0;font-size:.84rem"><b>No attempts recorded.</b> No assessment has been submitted by this employee for this SOP. Only continue if you have verified the employee\'s competence in another way (e.g. paper certificate from a previous training provider).</div>';
-}
-if(t==='pass'){
-h+='<div style="background:#FEF3C7;border-left:4px solid #FBB227;padding:14px 18px;margin-bottom:14px;font-size:.84rem;border-radius:0 6px 6px 0">';
-h+='<b>You are about to manually mark this employee as COMPETENT.</b><br>To prevent the wrong-row mistake, please type the SOP code <b>'+esc(sop.code)+'</b> below to confirm.</div>';
-h+='<div class="fg"><label>Type the SOP code to confirm</label><input id="adm-confirm-code" placeholder="'+esc(sop.code)+'" autocomplete="off"></div>';
-h+='<div class="fg"><label>Reason (required, min 8 chars) — what is the basis for this manual pass?</label><textarea id="adm-reason" rows="2" placeholder="e.g. Employee presented original certificate of training from XYZ Training Provider dated 12 March 2025 — verified by HR file"></textarea></div>';
-h+='<div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-gn" style="width:auto" onclick="confirmPassModal()">✓ Confirm Manual Pass</button><button class="btn btn-o" style="width:auto" onclick="closeAdminModal()">Cancel</button></div>';
-}else if(t==='revoke'){
-if(!passR)h+='<div style="background:#FEE2E2;border-left:4px solid #EF4444;padding:14px;border-radius:0 6px 6px 0;color:#991B1B">No PASS record found to revoke.</div>';
-else{
-h+='<div style="background:#FFF7ED;border-left:4px solid #EA580C;padding:14px 18px;margin-bottom:14px;font-size:.84rem;border-radius:0 6px 6px 0"><b>You are about to revoke a recorded PASS.</b><br>The pass record will be marked revoked (status flips back to In Progress / Outstanding). The original record stays in the audit history. Use this when a Pass was applied to the wrong employee, wrong SOP, or in error.</div>';
-h+='<div class="fg"><label>Reason (required, min 8 chars)</label><textarea id="adm-reason" rows="2" placeholder="e.g. Pass was recorded against wrong SOP code on 06 May 2026 — should have been HSE-TRN-LF-001 not OM-SC-DB-001"></textarea></div>';
-h+='<div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-d" style="width:auto" onclick="confirmRevokeModal()">↩ Confirm Revoke</button><button class="btn btn-o" style="width:auto" onclick="closeAdminModal()">Cancel</button></div>';
-}
-}else if(t==='edit'){
-var er=passR||lastR;
-if(!er)h+='<p>No record to edit.</p>';
-else{
-h+='<div style="background:#EFF6FF;border-left:4px solid #2563EB;padding:14px 18px;margin-bottom:14px;font-size:.84rem;border-radius:0 6px 6px 0"><b>Editing the most recent record</b> (Attempt '+er.att+'/3 dated '+fd(er.dt)+'). Leave fields as-is to keep the current value.</div>';
-h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">';
-h+='<div class="fg"><label>Score</label><input id="adm-edit-score" type="number" min="0" value="'+er.score+'"></div>';
-h+='<div class="fg"><label>Total</label><input id="adm-edit-total" type="number" min="1" value="'+er.total+'"></div>';
-h+='<div class="fg"><label>Date</label><input id="adm-edit-dt" type="date" value="'+er.dt.substring(0,10)+'"></div>';
-h+='</div>';
-h+='<div class="fg"><label>Pass status</label><select id="adm-edit-pass"><option value="auto">Auto (>=80%)</option><option value="true"'+(er.pass?' selected':'')+'>Force PASS</option><option value="false"'+(!er.pass?' selected':'')+'>Force FAIL</option></select></div>';
-h+='<div class="fg"><label>Reason for edit (required, min 8 chars)</label><textarea id="adm-reason" rows="2" placeholder="e.g. Score originally recorded as 12/15 — manual recount of paper assessment confirms 14/15"></textarea></div>';
-h+='<div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-bl" style="width:auto" onclick="confirmEditModal()">💾 Save Changes</button><button class="btn btn-o" style="width:auto" onclick="closeAdminModal()">Cancel</button></div>';
-}
-}else if(t==='reset'){
-h+='<div style="background:#FEE2E2;border-left:4px solid #DC2626;padding:14px 18px;margin-bottom:14px;font-size:.84rem;border-radius:0 6px 6px 0"><b>WARNING: This will permanently delete '+sr.length+' recorded attempt(s) for this employee on this SOP.</b><br>Progress flags (Read SOP, Watched Video, Interactive) will all be cleared. The employee will need to redo the entire training module from the beginning.<br><br>Use this when a system fault caused a wrong score, or training needs to be re-attempted from scratch.</div>';
-h+='<div class="fg"><label>Reason (required, min 8 chars)</label><textarea id="adm-reason" rows="2" placeholder="e.g. System recorded fail in error — interactive HTML did not load on employee\'s shift"></textarea></div>';
-h+='<div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-d" style="width:auto" onclick="confirmResetModal()">🔄 Confirm Reset</button><button class="btn btn-o" style="width:auto" onclick="closeAdminModal()">Cancel</button></div>';
-}
-return h+'</div></div></div>';
+return h+'</tbody></table></div></div></div>';
 }
 
 // === REPORTS ===
@@ -712,131 +598,59 @@ if(!assigns.some(function(a){return a.eid===eid&&a.sc===sc})){assigns.push({eid:
 save();render();alert(added+' assignment(s) created'+(selectedSops.length>1?' across '+selectedSops.length+' courses':'')+'.');}
 function removeAssign(eid,sc){assigns=assigns.filter(function(a){return!(a.eid===eid&&a.sc===sc)});save();render()}
 
-// === ADMIN MODAL ACTIONS (Pass / Revoke / Edit / Reset / Audit) ===
-// All admin corrections route through these modals so the wrong-row mistake is no longer possible
-// and every action is captured in the audit log for MHSA s.10 compliance.
+// Admin: Mark employee as passed (manually verified via certificate)
+function markAsPassed(eid,sc){var emp=emps.find(function(e){return e.id===eid});
+var sop=sops.find(function(s){return s.code===sc});
+if(!emp||!sop){alert('Employee or SOP not found');return;}
+if(hasPassed(eid,sc)){alert(emp.name+' already marked as passed for '+sc);return;}
+var att=getAtt(eid,sc);var hasAttempts=att.length>0;
+// Show modal
+var ov=document.createElement('div');ov.id='mp-overlay';ov.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+var md='<div style="background:#fff;border-radius:16px;max-width:560px;width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">';
+md+='<div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid #e5e7eb"><h2 style="color:#22C55E;font-size:1.1rem;margin:0">✓ Mark as Passed (Manual Override)</h2><button onclick="document.getElementById(\'mp-overlay\').remove()" style="background:none;border:1px solid #d1d5db;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.85rem">Close</button></div>';
+md+='<div style="padding:20px 24px">';
+md+='<div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:16px;display:flex;justify-content:space-between"><div><div style="font-size:.7rem;color:#6B7280;text-transform:uppercase;font-weight:600">Employee</div><div style="font-weight:700;font-size:1rem">'+emp.name+'</div><div style="font-size:.82rem;color:#6B7280">'+emp.id+' · '+emp.site+'</div></div><div style="text-align:right"><div style="font-size:.7rem;color:#6B7280;text-transform:uppercase;font-weight:600">Training Module</div><div style="font-weight:700;color:#FBB227;font-size:1rem">'+sc+'</div><div style="font-size:.82rem;color:#6B7280">'+sop.title.toUpperCase()+'</div></div></div>';
+if(!hasAttempts){md+='<div style="background:#FEF2F2;border-left:4px solid #EF4444;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px"><div style="font-weight:700;color:#EF4444;font-size:.85rem">No attempts recorded.</div><div style="font-size:.82rem;color:#6B7280;margin-top:4px">No assessment has been submitted by this employee for this SOP. Only continue if you have verified the employee\'s competence in another way (e.g. paper certificate from a previous training provider).</div></div>';}
+md+='<div style="background:#FFFBEB;border-left:4px solid #FBB227;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:20px"><div style="font-weight:700;color:#243034;font-size:.85rem">You are about to manually mark this employee as COMPETENT.</div><div style="font-size:.82rem;color:#6B7280;margin-top:4px">To prevent the wrong-row mistake, please type the SOP code <b>'+sc+'</b> below to confirm.</div></div>';
+md+='<div style="margin-bottom:16px"><label style="font-weight:700;font-size:.78rem;text-transform:uppercase;color:#6B7280;display:block;margin-bottom:6px">Type the SOP Code to Confirm</label><input id="mp-sop-confirm" style="width:100%;padding:12px;border:2px solid #d1d5db;border-radius:8px;font-size:1rem;font-weight:600" placeholder="'+sc+'"></div>';
+md+='<div style="margin-bottom:20px"><label style="font-weight:700;font-size:.78rem;text-transform:uppercase;color:#6B7280;display:block;margin-bottom:6px">Reason (required, min 8 chars) — What is the basis for this manual pass?</label><textarea id="mp-reason" rows="3" style="width:100%;padding:12px;border:2px solid #d1d5db;border-radius:8px;font-size:.9rem;resize:vertical" placeholder="e.g. Employee presented original certificate of training from XYZ Training Provider dated 12 March 2025 — verified by HR file"></textarea></div>';
+md+='<div style="display:flex;gap:10px"><button onclick="confirmManualPass(\''+eid+'\',\''+sc+'\')" style="background:#22C55E;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-weight:700;cursor:pointer;font-size:.9rem">✓ Confirm Manual Pass</button><button onclick="document.getElementById(\'mp-overlay\').remove()" style="background:#f3f4f6;color:#243034;border:1px solid #d1d5db;border-radius:8px;padding:12px 24px;font-weight:600;cursor:pointer;font-size:.9rem">Cancel</button></div>';
+md+='</div></div>';
+ov.innerHTML=md;document.body.appendChild(ov);
+document.getElementById('mp-sop-confirm').focus();}
 
-function openPassModal(eid,sc){var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});if(!emp||!sop){alert('Employee or SOP not found');return}if(hasPassed(eid,sc)){alert(emp.name+' is already marked Competent for '+sc+'. To change this, use Revoke or Edit.');return}modalView={type:'pass',eid:eid,sc:sc};render()}
-function openRevokeModal(eid,sc){var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});if(!emp||!sop){alert('Employee or SOP not found');return}modalView={type:'revoke',eid:eid,sc:sc};render()}
-function openEditModal(eid,sc){var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});if(!emp||!sop){alert('Employee or SOP not found');return}var sr=getAtt(eid,sc);if(!sr.length){alert('No recorded attempts to edit. Use "Mark Pass" if you need to record a manual pass.');return}modalView={type:'edit',eid:eid,sc:sc};render()}
-function openResetModal(eid,sc){var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});if(!emp||!sop){alert('Employee or SOP not found');return}modalView={type:'reset',eid:eid,sc:sc};render()}
-function showAuditLog(){modalView={type:'audit'};render()}
-function closeAdminModal(){modalView=null;render()}
-
-async function confirmPassModal(){
-var eid=modalView.eid,sc=modalView.sc;
-var typed=(document.getElementById('adm-confirm-code').value||'').trim();
-var reason=(document.getElementById('adm-reason').value||'').trim();
-if(typed.toUpperCase()!==sc.toUpperCase()){alert('SOP code mismatch.\n\nYou typed: "'+typed+'"\nExpected: "'+sc+'"\n\nThis confirmation step prevents marking the wrong row. Please type the SOP code exactly.');return}
-if(reason.length<8){alert('A reason of at least 8 characters is required for the audit log.');return}
+async function confirmManualPass(eid,sc){
+var typed=(document.getElementById('mp-sop-confirm').value||'').trim();
+var reason=(document.getElementById('mp-reason').value||'').trim();
+if(typed.toUpperCase()!==sc.toUpperCase()){alert('SOP code does not match. Please type: '+sc);return;}
+if(reason.length<8){alert('Please provide a reason (at least 8 characters) for this manual pass.');return;}
+var ov=document.getElementById('mp-overlay');if(ov)ov.remove();
 var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});
 await reloadCritical();
-if(hasPassed(eid,sc)){alert(emp.name+' is already Competent for '+sc+'. Refreshing.');closeAdminModal();return}
+// Mark all progress steps as done
 var k=eid+'_'+sc;prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=prog[k].srd||now();prog[k].vw=true;prog[k].vwd=prog[k].vwd||now();
 if(sop.interactiveNA===false){prog[k].ia=true;prog[k].iad=prog[k].iad||now();}
+// Add a passing result record
 var qs=sop.qs||[];var total=qs.length||1;
-var r={id:gid(),eid:eid,sc:sc,score:total,total:total,pct:100,pass:true,att:1,dt:now(),manual:true,manualBy:user.name,manualReason:reason};
+var r={id:gid(),eid:eid,sc:sc,score:total,total:total,pct:100,pass:true,att:1,dt:now(),manual:true,manualReason:reason};
 res.push(r);
 notifs.unshift({id:gid(),type:'pass',en:emp.name,es:emp.site,sc:sc,pct:100,att:1,dt:now()});
-logAudit('PASS_MANUAL',eid,sc,{status:'Outstanding/Locked'},{status:'Competent',score:'100%',via:'manual override'},reason);
 var ok=await save();
-if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return}
-modalView=null;render();alert('✅ '+emp.name+' marked COMPETENT for '+sc+'.\nLogged to audit trail.');
-}
+if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return;}
+render();alert('✅ '+emp.name+' has been marked as PASSED for '+sc+'. They can now download their proof of competence.');}
 
-async function confirmRevokeModal(){
-var eid=modalView.eid,sc=modalView.sc;
-var reason=(document.getElementById('adm-reason').value||'').trim();
-if(reason.length<8){alert('A reason of at least 8 characters is required for the audit log.');return}
+async function resetAttempts(eid,sc){var emp=emps.find(function(e){return e.id===eid});
+var sop=sops.find(function(s){return s.code===sc});
+if(!emp||!sop){alert('Employee or SOP not found');return;}
+var att=getAtt(eid,sc);
+if(!confirm('Reset all '+att.length+' failed attempts for '+emp.name+' on '+sop.title+' ('+sc+')?\n\nThis will remove their failed results and reset their progress so they can redo the full training module from scratch (read SOP, watch video, interactive, then assessment).\n\nOnly do this if you are satisfied the lock-out was due to a system issue.')){return;}
 await reloadCritical();
-var passR=res.find(function(r){return r.eid===eid&&r.sc===sc&&r.pass});
-if(!passR){alert('No PASS record found to revoke. The data may have changed since you opened this modal.');closeAdminModal();return}
-passR.pass=false;passR.revoked=true;passR.revokedBy=user.name;passR.revokedAt=now();passR.revokedReason=reason;
-var emp=emps.find(function(e){return e.id===eid});
-logAudit('REVOKE',eid,sc,{status:'Competent',resultId:passR.id,score:passR.pct+'%'},{status:'Revoked → status reverts'},reason);
-var ok=await save();
-if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return}
-modalView=null;render();alert('↩ Pass for '+(emp?emp.name:eid)+' on '+sc+' has been revoked.\nLogged to audit trail.');
-}
-
-async function confirmEditModal(){
-var eid=modalView.eid,sc=modalView.sc;
-var reason=(document.getElementById('adm-reason').value||'').trim();
-if(reason.length<8){alert('A reason of at least 8 characters is required for the audit log.');return}
-var newScore=parseInt(document.getElementById('adm-edit-score').value);
-var newTotal=parseInt(document.getElementById('adm-edit-total').value);
-var newDt=document.getElementById('adm-edit-dt').value;
-var passSel=document.getElementById('adm-edit-pass').value;
-if(isNaN(newScore)||isNaN(newTotal)||newTotal<1||newScore<0||newScore>newTotal){alert('Score and Total must be valid numbers, with Score <= Total and Total >= 1.');return}
-await reloadCritical();
-var sr=getAtt(eid,sc);var er=sr.find(function(r){return r.pass})||(sr.length?sr[sr.length-1]:null);
-if(!er){alert('No record to edit (data may have changed).');closeAdminModal();return}
-var before={score:er.score,total:er.total,pct:er.pct,pass:er.pass,dt:er.dt};
-var newPct=Math.round(newScore/newTotal*100);
-var newPass=passSel==='true'?true:passSel==='false'?false:newPct>=80;
-er.score=newScore;er.total=newTotal;er.pct=newPct;er.pass=newPass;
-if(newDt){var iso=new Date(newDt+'T12:00:00').toISOString();er.dt=iso;}
-er.editedBy=user.name;er.editedAt=now();er.editReason=reason;
-logAudit('EDIT',eid,sc,before,{score:newScore,total:newTotal,pct:newPct,pass:newPass,dt:er.dt},reason);
-var ok=await save();
-if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return}
-modalView=null;render();alert('✎ Result updated. Logged to audit trail.');
-}
-
-async function confirmResetModal(){
-var eid=modalView.eid,sc=modalView.sc;
-var reason=(document.getElementById('adm-reason').value||'').trim();
-if(reason.length<8){alert('A reason of at least 8 characters is required for the audit log.');return}
-await reloadCritical();
-var sr=getAtt(eid,sc);
-var before={attempts:sr.length,passed:sr.some(function(r){return r.pass})};
 res=res.filter(function(r){return!(r.eid===eid&&r.sc===sc)});
 var k=eid+'_'+sc;prog[k]=prog[k]||{};prog[k].sr=false;prog[k].vw=false;prog[k].ia=false;
-unlockLog.push({eid:eid,sc:sc,dt:now(),reason:'Admin reset — '+reason,by:user.name});
-logAudit('RESET',eid,sc,before,{attempts:0,passed:false,prog:'cleared'},reason);
+unlockLog.push({eid:eid,sc:sc,dt:now(),reason:'Admin reset attempts'});
 var ok=await save();
-if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return}
-var emp=emps.find(function(e){return e.id===eid});
-modalView=null;render();alert('🔄 '+(emp?emp.name:eid)+' reset for '+sc+'. They will redo the full module.\nLogged to audit trail.');
-}
-
-// Backwards compatibility: keep old function names as aliases (in case other code paths still call them)
-function markAsPassed(eid,sc){openPassModal(eid,sc)}
-function resetAttempts(eid,sc){openResetModal(eid,sc)}
-
-// Download audit log as CSV (for offline filing / sharing with HSE / DMPR)
-function dlAuditLog(){
-if(!auditLog.length){alert('No audit entries to download.');return}
-var rows=[['DateTime','Admin','Action','EmployeeNumber','EmployeeName','SOP','Reason','Before','After']];
-auditLog.forEach(function(a){var e=emps.find(function(x){return x.id===a.eid});
-rows.push([fdt(a.dt),a.admin,a.action,a.eid||'',e?e.name:'',a.sc||'',a.reason||'',JSON.stringify(a.before||''),JSON.stringify(a.after||'')]);});
-var csv=rows.map(function(r){return r.map(function(c){var s=String(c||'');return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(',')}).join('\n');
-var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='OneMining_AdminAuditLog_'+now().substring(0,10)+'.csv';a.click();
-}
-
-// === Auto-pass detection: listen for scores posted by interactive HTML iframes ===
-// The interactive HTML can post {type:'lms-score', score, total, pct, pass} to record a real attempt.
-async function handleInteractiveScore(ev){
-try{
-var d=ev&&ev.data;
-if(!d||d.type!=='lms-score')return;
-if(!user||!activeSop)return;
-if(typeof d.score!=='number'||typeof d.total!=='number'||d.total<1)return;
-await reloadCritical();
-var nowMs=Date.now();
-var recent=res.filter(function(r){return r.eid===user.id&&r.sc===activeSop.code&&r.interactive&&(nowMs-new Date(r.dt).getTime())<30000});
-if(recent.length)return;
-var pct=Math.round(d.score/d.total*100);
-var pass=typeof d.pass==='boolean'?d.pass:pct>=80;
-var att=getAtt(user.id,activeSop.code);
-var r={id:gid(),eid:user.id,sc:activeSop.code,score:d.score,total:d.total,pct:pct,pass:pass,att:att.length+1,dt:now(),interactive:true};
-res.push(r);
-var k=user.id+'_'+activeSop.code;prog[k]=prog[k]||{};prog[k].ia=true;prog[k].iad=now();
-var emp=emps.find(function(e){return e.id===user.id});
-notifs.unshift({id:gid(),type:pass?'pass':'fail',en:emp?emp.name:user.id,es:emp?emp.site:'',sc:activeSop.code,pct:pct,att:r.att,dt:now()});
-await save();render();
-}catch(e){console.error('handleInteractiveScore failed',e);}
-}
+if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return;}
+render();alert('✅ '+emp.name+' has been reset for '+sc+'. They can now redo the full training module from the beginning.');}
 
 // Unlock
 function showUnlock(eid){var emp=emps.find(function(e){return e.id===eid});
@@ -858,9 +672,9 @@ function clearNotifs(){notifs=[];save();render()}
 function toggleAddEmp(){var el=document.getElementById('add-emp-form');if(el){el.classList.toggle('hide');if(!el.classList.contains('hide')){document.getElementById('edit-emp-id').value='';document.getElementById('emp-form-title').textContent='Add Employee';['nemp-id','nemp-idn','nemp-name','nemp-dept'].forEach(function(id){document.getElementById(id).value=''});document.getElementById('nemp-gender').value='';document.getElementById('nemp-site').value='';document.getElementById('nemp-pin').value='1234';}}
 var bf=document.getElementById('bulk-emp-form');if(bf)bf.classList.add('hide');}
 function toggleBulkEmp(){var el=document.getElementById('bulk-emp-form');if(el)el.classList.toggle('hide');var af=document.getElementById('add-emp-form');if(af)af.classList.add('hide');}
-function saveEmp(){var eid=clean(document.getElementById('nemp-id').value);var idn=clean(document.getElementById('nemp-idn').value);
-var name=clean(document.getElementById('nemp-name').value);var gender=document.getElementById('nemp-gender').value;
-var dept=clean(document.getElementById('nemp-dept').value);var site=document.getElementById('nemp-site').value;var pin=clean(document.getElementById('nemp-pin').value)||'1234';
+function saveEmp(){var eid=document.getElementById('nemp-id').value.trim();var idn=document.getElementById('nemp-idn').value.trim();
+var name=document.getElementById('nemp-name').value.trim();var gender=document.getElementById('nemp-gender').value;
+var dept=document.getElementById('nemp-dept').value.trim();var site=document.getElementById('nemp-site').value;var pin=document.getElementById('nemp-pin').value.trim()||'1234';
 if(!eid||!name||!gender||!site){alert('Employee number, name, gender, site required');return}
 var editId=document.getElementById('edit-emp-id').value;
 if(editId){var idx=emps.findIndex(function(e){return e.id===editId});if(idx>=0)emps[idx]={id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin};}
@@ -877,8 +691,8 @@ function uploadEmpCSV(){var inp=document.createElement('input');inp.type='file';
 var lines=ev.target.result.split('\n').filter(function(l){return l.trim()});var added=0,skipped=0;
 lines.forEach(function(line,i){var cols=line.split(',').map(function(c){return c.trim().replace(/^"|"$/g,'')});
 if(i===0&&cols[0].toLowerCase().indexOf('employee')>=0)return;if(cols.length<6)return;
-var eid=clean(cols[0]);if(!eid||emps.some(function(e){return e.id.toUpperCase()===eid.toUpperCase()})){skipped++;return}
-emps.push({id:eid,idn:clean(cols[1]||''),name:clean(cols[2]),gender:clean(cols[3]),dept:clean(cols[4]),site:clean(cols[5]),pin:clean(cols[6]||'')||'1234'});added++;});
+var eid=cols[0];if(!eid||emps.some(function(e){return e.id.toUpperCase()===eid.toUpperCase()})){skipped++;return}
+emps.push({id:eid,idn:cols[1]||'',name:cols[2],gender:cols[3],dept:cols[4],site:cols[5],pin:cols[6]||'1234'});added++;});
 save();render();alert(added+' added, '+skipped+' skipped');};reader.readAsText(f)};inp.click();}
 // === REPORT DOWNLOADS ===
 function dlProofEmp(eid,sc){var pr=res.find(function(r){return r.eid===eid&&r.sc===sc&&r.pass});
@@ -892,7 +706,7 @@ w.document.write('<!DOCTYPE html><html><head><title>Assessment - '+emp.name+'</t
 w.document.write('<div class="wm">ONE MINING</div><div class="hdr"><h1>One <span class="gold">Mining</span></h1><p>Training Management System</p></div>');
 w.document.write('<div class="ttl">'+(pass?'Certificate of Competency':'Assessment Record')+'</div>');
 w.document.write('<div class="rb '+(pass?'ps':'fl')+'"><div class="s">'+pct+'%</div><div class="st">'+(pass?'PASSED':'FAILED')+'</div></div>');
-w.document.write('<table><tr><td>Employee Name</td><td>'+emp.name+'</td></tr><tr><td>Employee Number</td><td>'+emp.id+'</td></tr><tr><td>ID Number</td><td>'+esc(clean(emp.idn))+'</td></tr><tr><td>Gender</td><td>'+emp.gender+'</td></tr><tr><td>Site</td><td>'+emp.site+'</td></tr><tr><td>Department</td><td>'+emp.dept+'</td></tr></table>');
+w.document.write('<table><tr><td>Employee Name</td><td>'+emp.name+'</td></tr><tr><td>Employee Number</td><td>'+emp.id+'</td></tr><tr><td>ID Number</td><td>'+emp.idn+'</td></tr><tr><td>Gender</td><td>'+emp.gender+'</td></tr><tr><td>Site</td><td>'+emp.site+'</td></tr><tr><td>Department</td><td>'+emp.dept+'</td></tr></table>');
 w.document.write('<table><tr><td>SOP Code</td><td>'+sop.code+'</td></tr><tr><td>SOP Title</td><td>'+sop.title+'</td></tr><tr><td>Revision</td><td>'+sop.rev+'</td></tr></table>');
 w.document.write('<table><tr><td>Score</td><td>'+score+'/'+total+' ('+pct+'%)</td></tr><tr><td>Pass Mark</td><td>80% ('+Math.ceil(total*.8)+'/'+total+')</td></tr><tr><td>Result</td><td style="font-weight:700;color:'+(pass?'#22C55E':'#EF4444')+'">'+(pass?'COMPETENT':'NOT YET COMPETENT')+'</td></tr><tr><td>Attempt</td><td>'+att+'/3</td></tr><tr><td>Date</td><td>'+fd(dt)+'</td></tr></table>');
 if(pass&&wrongs&&wrongs.length){w.document.write('<div style="margin:24px 0;border-left:4px solid #FBB227;padding:16px 20px;background:#FFFBEB;border-radius:0 8px 8px 0;page-break-inside:avoid"><h3 style="font-size:1rem;font-weight:700;color:#243034;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px">Review — Incorrect Answers</h3><p style="font-size:.82rem;color:#6B7280;margin-bottom:14px">You passed, but review the following questions to strengthen your understanding:</p>');wrongs.forEach(function(wr){w.document.write('<div style="padding:10px 0;border-bottom:1px solid #F0E6C8"><div style="font-weight:600;color:#243034;font-size:.88rem;margin-bottom:4px">Q'+wr.n+'. '+wr.t+'</div><div style="font-size:.82rem;color:#EF4444;margin-bottom:2px">✗ Your answer: '+wr.yours+'</div><div style="font-size:.82rem;color:#22C55E;font-weight:600">✓ Correct answer: '+wr.correct+'</div></div>')});w.document.write('</div>');}
@@ -941,16 +755,16 @@ w.document.write('<h2>'+sop.code+' — '+sop.title+' ('+passed+'/'+sopAssigns.le
 w.document.write('<table><thead><tr><th>Emp#</th><th>Name</th><th>ID Number</th><th>Gender</th><th>Site</th><th>Status</th><th>Score</th><th>Pass Mark</th><th>Attempts</th><th>Date</th></tr></thead><tbody>');
 sopAssigns.forEach(function(a){var emp=emps.find(function(e){return e.id===a.eid});var st=getStatus(a.eid,sop.code);var att=getAtt(a.eid,sop.code);var pr=att.find(function(r){return r.pass});
 var stTxt=st==='passed'?'COMPETENT':st==='locked'?'LOCKED':st==='progress'?'IN PROGRESS':'OUTSTANDING';
-w.document.write('<tr><td>'+(emp?emp.id:'')+'</td><td>'+(emp?emp.name:'')+'</td><td>'+(emp?esc(clean(emp.idn)):'')+'</td><td>'+(emp?emp.gender:'')+'</td><td>'+(emp?emp.site:'')+'</td><td class="'+(st==='passed'?'pass':st==='locked'?'fail':'')+'">'+stTxt+'</td><td>'+(pr?pr.pct+'%':att.length?att[att.length-1].pct+'%':'-')+'</td><td>80%</td><td>'+att.length+'/3</td><td>'+(pr?fd(pr.dt):'-')+'</td></tr>');});
+w.document.write('<tr><td>'+(emp?emp.id:'')+'</td><td>'+(emp?emp.name:'')+'</td><td>'+(emp?emp.idn:'')+'</td><td>'+(emp?emp.gender:'')+'</td><td>'+(emp?emp.site:'')+'</td><td class="'+(st==='passed'?'pass':st==='locked'?'fail':'')+'">'+stTxt+'</td><td>'+(pr?pr.pct+'%':att.length?att[att.length-1].pct+'%':'-')+'</td><td>80%</td><td>'+att.length+'/3</td><td>'+(pr?fd(pr.dt):'-')+'</td></tr>');});
 w.document.write('</tbody></table>');});}
 else{// full
 w.document.write('<h2>Full Compliance Report — All Employees</h2>');
 w.document.write('<table><thead><tr><th>Emp#</th><th>Name</th><th>ID Number</th><th>Gender</th><th>Site</th><th>Dept</th><th>SOP</th><th>Status</th><th>Score</th><th>Pass Mark</th><th>Attempts</th><th>Date</th></tr></thead><tbody>');
 emps.forEach(function(emp){var ea=getEmpAssigns(emp.id);
-if(!ea.length){w.document.write('<tr><td>'+emp.id+'</td><td>'+emp.name+'</td><td>'+esc(clean(emp.idn))+'</td><td>'+esc(emp.gender)+'</td><td>'+emp.site+'</td><td>'+emp.dept+'</td><td colspan="6" style="color:#6B7280">No training assigned</td></tr>');return;}
+if(!ea.length){w.document.write('<tr><td>'+emp.id+'</td><td>'+emp.name+'</td><td>'+emp.idn+'</td><td>'+emp.gender+'</td><td>'+emp.site+'</td><td>'+emp.dept+'</td><td colspan="6" style="color:#6B7280">No training assigned</td></tr>');return;}
 ea.forEach(function(a,si){var sop=sops.find(function(s){return s.code===a.sc});var st=getStatus(emp.id,a.sc);var att=getAtt(emp.id,a.sc);var pr=att.find(function(r){return r.pass});
 var stTxt=st==='passed'?'COMPETENT':st==='locked'?'LOCKED':st==='progress'?'IN PROGRESS':'OUTSTANDING';
-w.document.write('<tr>'+(si===0?'<td rowspan="'+ea.length+'">'+emp.id+'</td><td rowspan="'+ea.length+'">'+emp.name+'</td><td rowspan="'+ea.length+'">'+esc(clean(emp.idn))+'</td><td rowspan="'+ea.length+'">'+emp.gender+'</td><td rowspan="'+ea.length+'">'+emp.site+'</td><td rowspan="'+ea.length+'">'+emp.dept+'</td>':'')+'<td>'+a.sc+'</td><td class="'+(st==='passed'?'pass':st==='locked'?'fail':'')+'">'+stTxt+'</td><td>'+(pr?pr.pct+'%':att.length?att[att.length-1].pct+'%':'-')+'</td><td>80%</td><td>'+att.length+'/3</td><td>'+(pr?fd(pr.dt):'-')+'</td></tr>');});});
+w.document.write('<tr>'+(si===0?'<td rowspan="'+ea.length+'">'+emp.id+'</td><td rowspan="'+ea.length+'">'+emp.name+'</td><td rowspan="'+ea.length+'">'+emp.idn+'</td><td rowspan="'+ea.length+'">'+emp.gender+'</td><td rowspan="'+ea.length+'">'+emp.site+'</td><td rowspan="'+ea.length+'">'+emp.dept+'</td>':'')+'<td>'+a.sc+'</td><td class="'+(st==='passed'?'pass':st==='locked'?'fail':'')+'">'+stTxt+'</td><td>'+(pr?pr.pct+'%':att.length?att[att.length-1].pct+'%':'-')+'</td><td>80%</td><td>'+att.length+'/3</td><td>'+(pr?fd(pr.dt):'-')+'</td></tr>');});});
 w.document.write('</tbody></table>');}
 w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training Management System</p><p>Generated '+fd(now())+' | Confidential — For compliance use only</p></div></body></html>');
 w.document.close();setTimeout(function(){w.print()},500);}
