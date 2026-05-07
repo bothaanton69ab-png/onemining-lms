@@ -3,6 +3,7 @@ function gid(){return Math.random().toString(36).substr(2,9)}
 function now(){return new Date().toISOString()}
 function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
+function cleanStr(s){return(s||'').replace(/[^\x20-\x7E]/g,'').trim()}
 
 // Data variables (loaded from Supabase on init)
 var sites=[];
@@ -70,6 +71,7 @@ async function init() {
     try {
         sites = await cloudLoad('sites', ['Thutse Mining','Malekaskraal Vanadium','Head Office']);
         emps = await cloudLoad('emps', []);
+        emps.forEach(function(e){e.idn=cleanStr(e.idn);e.name=cleanStr(e.name);e.id=cleanStr(e.id);e.gender=cleanStr(e.gender);e.site=cleanStr(e.site);e.dept=cleanStr(e.dept);});
         res = await cloudLoad('res', []);
         prog = await cloudLoad('prog', {});
         notifs = await cloudLoad('notifs', []);
@@ -619,11 +621,13 @@ md+='</div></div>';
 ov.innerHTML=md;document.body.appendChild(ov);
 document.getElementById('mp-sop-confirm').focus();}
 
-function normSop(s){return s.replace(/[\s ​‌‍﻿]/g,'').replace(/[‐‑‒–—―﹘﹣－]/g,'-').toUpperCase();}
+function normSop(s){return (s||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();}
 async function confirmManualPass(eid,sc){
-var typed=normSop(document.getElementById('mp-sop-confirm').value||'');
+var raw=document.getElementById('mp-sop-confirm').value||'';
+var typed=normSop(raw);
+var expected=normSop(sc);
 var reason=(document.getElementById('mp-reason').value||'').trim();
-if(typed!==normSop(sc)){alert('SOP code does not match. Please type: '+sc);return;}
+if(typed!==expected){alert('DEBUG info:\nYou typed: ['+raw+'] ('+raw.length+' chars)\nStripped: ['+typed+']\nExpected: ['+expected+']\nMatch: '+(typed===expected));return;}
 if(reason.length<8){alert('Please provide a reason (at least 8 characters) for this manual pass.');return;}
 var ov=document.getElementById('mp-overlay');if(ov)ov.remove();
 var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});
