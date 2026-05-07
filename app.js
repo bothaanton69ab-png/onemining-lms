@@ -619,10 +619,11 @@ md+='</div></div>';
 ov.innerHTML=md;document.body.appendChild(ov);
 document.getElementById('mp-sop-confirm').focus();}
 
+function normSop(s){return s.replace(/[\s ​‌‍﻿]/g,'').replace(/[‐‑‒–—―﹘﹣－]/g,'-').toUpperCase();}
 async function confirmManualPass(eid,sc){
-var typed=(document.getElementById('mp-sop-confirm').value||'').trim();
+var typed=normSop(document.getElementById('mp-sop-confirm').value||'');
 var reason=(document.getElementById('mp-reason').value||'').trim();
-if(typed.toUpperCase()!==sc.toUpperCase()){alert('SOP code does not match. Please type: '+sc);return;}
+if(typed!==normSop(sc)){alert('SOP code does not match. Please type: '+sc);return;}
 if(reason.length<8){alert('Please provide a reason (at least 8 characters) for this manual pass.');return;}
 var ov=document.getElementById('mp-overlay');if(ov)ov.remove();
 var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});
