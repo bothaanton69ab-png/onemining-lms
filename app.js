@@ -340,10 +340,13 @@ var h='<div class="topbar"><h1>Assign Training</h1></div><div class="pc">';
 h+='<div class="card"><div class="ch"><h3>Assign Training to Employees</h3></div><div class="cb">';
 h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
 h+='<div class="fg"><label>Assign To</label><select id="asgn-mode" onchange="var m=this.value;document.getElementById(\'asgn-emp-row\').className=\'fg\'+(m===\'individual\'?\'\':\' hide\');document.getElementById(\'asgn-site-row\').className=\'fg\'+(m===\'site\'?\'\':\' hide\');document.getElementById(\'asgn-dept-row\').className=\'fg\'+(m===\'dept\'?\'\':\' hide\')"><option value="individual">Individual Employee</option><option value="site">All at Site</option><option value="dept">All in Department</option></select></div>';
-h+='<div class="fg"><label>Training Course</label><select id="asgn-sop"><option value="">Select SOP...</option>';
-sops.forEach(function(s){h+='<option value="'+s.code+'">'+s.code+' — '+s.title+'</option>'});
-h+='</select></div></div>';
-h+='<div id="asgn-emp-row" class="fg"><label>Employee</label><select id="asgn-emp"><option value="">Select...</option>';
+h+='<div class="fg"><label>Training Courses <span style="font-weight:400;color:#6B7280;font-size:.8rem">(select one or more)</span></label>';
+h+='<div style="border:1px solid #d1d5db;border-radius:8px;max-height:180px;overflow-y:auto;padding:8px">';
+sops.forEach(function(s){h+='<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;font-size:.9rem" onmouseover="this.style.background=\'#f3f4f6\'" onmouseout="this.style.background=\'transparent\'"><input type="checkbox" class="asgn-sop-cb" value="'+s.code+'" style="width:16px;height:16px;accent-color:#FBB227"><span style="font-weight:600;color:#FBB227;min-width:120px">'+s.code+'</span><span>'+s.title+'</span></label>'});
+h+='</div><div style="margin-top:6px;display:flex;gap:8px"><button type="button" class="btn btn-p btn-sm" style="font-size:.75rem;padding:4px 10px" onclick="document.querySelectorAll(\'.asgn-sop-cb\').forEach(function(c){c.checked=true})">Select All</button><button type="button" class="btn btn-o btn-sm" style="font-size:.75rem;padding:4px 10px" onclick="document.querySelectorAll(\'.asgn-sop-cb\').forEach(function(c){c.checked=false})">Clear All</button></div></div></div>';
+h+='<div id="asgn-emp-row" class="fg"><label>Employee</label>';
+h+='<input id="asgn-emp-search" placeholder="Type name or employee number to search..." oninput="filterAsgnEmps()" style="margin-bottom:6px">';
+h+='<select id="asgn-emp" size="6" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:4px"><option value="">Select...</option>';
 emps.forEach(function(e){h+='<option value="'+e.id+'">'+e.id+' — '+e.name+' ('+e.site+')</option>'});
 h+='</select></div>';
 h+='<div id="asgn-site-row" class="fg hide"><label>Site</label><select id="asgn-site"><option value="">Select...</option>';
@@ -582,15 +585,17 @@ if(cur&&cur.o.length===4)qs.push(cur);if(!qs.length){alert('Could not parse');re
 var sop=sops.find(function(s){return s.id===qmSopId});sop.qs=sop.qs.concat(qs);qmBulk='';save();render();alert(qs.length+' imported');}
 
 // Assignment
-function doAssign(){var mode=document.getElementById('asgn-mode').value;var sc=document.getElementById('asgn-sop').value;var order=parseInt(document.getElementById('asgn-order').value)||1;
-if(!sc){alert('Select a training course');return}
+function filterAsgnEmps(){var q=(document.getElementById('asgn-emp-search').value||'').toLowerCase();var sel=document.getElementById('asgn-emp');if(!sel)return;var opts='<option value="">Select...</option>';emps.forEach(function(e){var txt=e.id+' — '+e.name+' ('+e.site+')';if(!q||e.id.toLowerCase().indexOf(q)>=0||e.name.toLowerCase().indexOf(q)>=0)opts+='<option value="'+e.id+'">'+txt+'</option>'});sel.innerHTML=opts;}
+function doAssign(){var mode=document.getElementById('asgn-mode').value;var order=parseInt(document.getElementById('asgn-order').value)||1;
+var selectedSops=[];document.querySelectorAll('.asgn-sop-cb:checked').forEach(function(cb){selectedSops.push(cb.value)});
+if(!selectedSops.length){alert('Select at least one training course');return}
 var targetEmps=[];
 if(mode==='individual'){var eid=document.getElementById('asgn-emp').value;if(!eid){alert('Select an employee');return}targetEmps=[eid];}
 else if(mode==='site'){var site=document.getElementById('asgn-site').value;if(!site){alert('Select a site');return}targetEmps=emps.filter(function(e){return e.site===site}).map(function(e){return e.id});}
 else if(mode==='dept'){var dept=document.getElementById('asgn-dept').value;if(!dept){alert('Enter department');return}targetEmps=emps.filter(function(e){return e.dept.toLowerCase().indexOf(dept.toLowerCase())>=0}).map(function(e){return e.id});}
-var added=0;targetEmps.forEach(function(eid){
-if(!assigns.some(function(a){return a.eid===eid&&a.sc===sc})){assigns.push({eid:eid,sc:sc,order:order,dt:now()});added++;}});
-save();render();alert(added+' assignment(s) created.');}
+var added=0;targetEmps.forEach(function(eid){selectedSops.forEach(function(sc,si){
+if(!assigns.some(function(a){return a.eid===eid&&a.sc===sc})){assigns.push({eid:eid,sc:sc,order:order+si,dt:now()});added++;}})});
+save();render();alert(added+' assignment(s) created'+(selectedSops.length>1?' across '+selectedSops.length+' courses':'')+'.');}
 function removeAssign(eid,sc){assigns=assigns.filter(function(a){return!(a.eid===eid&&a.sc===sc)});save();render()}
 
 // Admin: Mark employee as passed (manually verified via certificate)
