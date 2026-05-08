@@ -39,8 +39,80 @@ async function cloudSave(key, value) {
     } catch(e) { console.error('Save failed for ' + key, e); return false; }
 }
 
-// Save all data (called after every change) - now awaits all writes
+// Merge arrays by ID — keeps cloud records, adds/updates local records
+function mergeById(cloud, local, idKey) {
+    idKey = idKey || 'id';
+    var merged = cloud.slice();
+    var cloudIds = {};
+    cloud.forEach(function(item) { if(item[idKey]) cloudIds[item[idKey]] = true; });
+    local.forEach(function(item) {
+        if(item[idKey] && !cloudIds[item[idKey]]) merged.push(item);
+    });
+    return merged;
+}
+
+// Merge assignment arrays — unique by eid+sc combo
+function mergeAssigns(cloud, local) {
+    var merged = cloud.slice();
+    var cloudKeys = {};
+    cloud.forEach(function(a) { cloudKeys[a.eid + '||' + a.sc] = true; });
+    local.forEach(function(a) {
+        if(!cloudKeys[a.eid + '||' + a.sc]) merged.push(a);
+    });
+    return merged;
+}
+
+// Merge progress objects — keeps all keys from both, local wins on conflicts
+function mergeObj(cloud, local) {
+    var merged = {};
+    Object.keys(cloud).forEach(function(k) { merged[k] = cloud[k]; });
+    Object.keys(local).forEach(function(k) {
+        if(!merged[k]) { merged[k] = local[k]; }
+        else {
+            // Merge individual progress fields — true wins over false
+            var c = merged[k], l = local[k], m = {};
+            Object.keys(c).forEach(function(f) { m[f] = c[f]; });
+            Object.keys(l).forEach(function(f) { if(l[f] === true || !m[f]) m[f] = l[f]; });
+            merged[k] = m;
+        }
+    });
+    return merged;
+}
+
+// Save all data with merge-from-cloud to prevent overwrites
 async function save() {
+    try {
+        // Reload latest from cloud before saving
+        var cloudRes = await cloudLoad('res', []);
+        var cloudProg = await cloudLoad('prog', {});
+        var cloudAssigns = await cloudLoad('assigns', []);
+        var cloudNotifs = await cloudLoad('notifs', []);
+        var cloudEmps = await cloudLoad('emps', []);
+        var cloudSops = await cloudLoad('sops', []);
+        var cloudUnlock = await cloudLoad('unlock', []);
+
+        // Merge — cloud data + local additions
+        res = mergeById(cloudRes, res);
+        // Remove any results that admin explicitly reset this session
+        if(removedResKeys.length){res=res.filter(function(r){return removedResKeys.indexOf(r.eid+'||'+r.sc)<0});}
+        prog = mergeObj(cloudProg, prog);
+        assigns = mergeAssigns(cloudAssigns, assigns);
+        // Remove any assignments that admin explicitly deleted this session
+        if(removedAssigns.length){assigns=assigns.filter(function(a){return removedAssigns.indexOf(a.eid+'||'+a.sc)<0});}
+        notifs = mergeById(cloudNotifs, notifs);
+        unlockLog = mergeById(cloudUnlock, unlockLog);
+
+        // For emps and sops — admin is sole editor, use local version
+        // But merge emps by id to prevent losing employees added by other admins
+        var empMerged = cloudEmps.slice();
+        var cloudEmpIds = {};
+        cloudEmps.forEach(function(e) { cloudEmpIds[e.id.toUpperCase()] = true; });
+        emps.forEach(function(e) { if(!cloudEmpIds[e.id.toUpperCase()]) empMerged.push(e); });
+        emps = empMerged;
+    } catch(e) {
+        console.error('Merge-reload failed, saving local copy:', e);
+    }
+
     var results = await Promise.all([
         cloudSave('res', res),
         cloudSave('prog', prog),
@@ -61,8 +133,10 @@ async function reloadCritical() {
     try {
         var latestRes = await cloudLoad('res', []);
         var latestProg = await cloudLoad('prog', {});
-        res = latestRes;
-        prog = latestProg;
+        var latestAssigns = await cloudLoad('assigns', []);
+        res = mergeById(latestRes, res);
+        prog = mergeObj(latestProg, prog);
+        assigns = mergeAssigns(latestAssigns, assigns);
     } catch(e) { console.error('Reload failed', e); }
 }
 
@@ -598,7 +672,8 @@ else if(mode==='dept'){var dept=document.getElementById('asgn-dept').value;if(!d
 var added=0;targetEmps.forEach(function(eid){selectedSops.forEach(function(sc,si){
 if(!assigns.some(function(a){return a.eid===eid&&a.sc===sc})){assigns.push({eid:eid,sc:sc,order:order+si,dt:now()});added++;}})});
 save();render();alert(added+' assignment(s) created'+(selectedSops.length>1?' across '+selectedSops.length+' courses':'')+'.');}
-function removeAssign(eid,sc){assigns=assigns.filter(function(a){return!(a.eid===eid&&a.sc===sc)});save();render()}
+var removedAssigns=[];var removedResKeys=[];
+function removeAssign(eid,sc){assigns=assigns.filter(function(a){return!(a.eid===eid&&a.sc===sc)});removedAssigns.push(eid+'||'+sc);save();render()}
 
 // Admin: Mark employee as passed (manually verified via certificate)
 function markAsPassed(eid,sc){var emp=emps.find(function(e){return e.id===eid});
@@ -650,6 +725,7 @@ if(!emp||!sop){alert('Employee or SOP not found');return;}
 var att=getAtt(eid,sc);
 if(!confirm('Reset all '+att.length+' failed attempts for '+emp.name+' on '+sop.title+' ('+sc+')?\n\nThis will remove their failed results and reset their progress so they can redo the full training module from scratch (read SOP, watch video, interactive, then assessment).\n\nOnly do this if you are satisfied the lock-out was due to a system issue.')){return;}
 await reloadCritical();
+removedResKeys.push(eid+'||'+sc);
 res=res.filter(function(r){return!(r.eid===eid&&r.sc===sc)});
 var k=eid+'_'+sc;prog[k]=prog[k]||{};prog[k].sr=false;prog[k].vw=false;prog[k].ia=false;
 unlockLog.push({eid:eid,sc:sc,dt:now(),reason:'Admin reset attempts'});
