@@ -681,43 +681,33 @@ var sop=sops.find(function(s){return s.code===sc});
 if(!emp||!sop){alert('Employee or SOP not found');return;}
 if(hasPassed(eid,sc)){alert(emp.name+' already marked as passed for '+sc);return;}
 var att=getAtt(eid,sc);var hasAttempts=att.length>0;
-// Show modal
 var ov=document.createElement('div');ov.id='mp-overlay';ov.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
 var md='<div style="background:#fff;border-radius:16px;max-width:560px;width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">';
-md+='<div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid #e5e7eb"><h2 style="color:#22C55E;font-size:1.1rem;margin:0">✓ Mark as Passed (Manual Override)</h2><button onclick="document.getElementById(\'mp-overlay\').remove()" style="background:none;border:1px solid #d1d5db;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.85rem">Close</button></div>';
+md+='<div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid #e5e7eb"><h2 style="color:#22C55E;font-size:1.1rem;margin:0">✓ Mark as Passed</h2><button onclick="document.getElementById(\'mp-overlay\').remove()" style="background:none;border:1px solid #d1d5db;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.85rem">Close</button></div>';
 md+='<div style="padding:20px 24px">';
 md+='<div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:16px;display:flex;justify-content:space-between"><div><div style="font-size:.7rem;color:#6B7280;text-transform:uppercase;font-weight:600">Employee</div><div style="font-weight:700;font-size:1rem">'+emp.name+'</div><div style="font-size:.82rem;color:#6B7280">'+emp.id+' · '+emp.site+'</div></div><div style="text-align:right"><div style="font-size:.7rem;color:#6B7280;text-transform:uppercase;font-weight:600">Training Module</div><div style="font-weight:700;color:#FBB227;font-size:1rem">'+sc+'</div><div style="font-size:.82rem;color:#6B7280">'+sop.title.toUpperCase()+'</div></div></div>';
-if(!hasAttempts){md+='<div style="background:#FEF2F2;border-left:4px solid #EF4444;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px"><div style="font-weight:700;color:#EF4444;font-size:.85rem">No attempts recorded.</div><div style="font-size:.82rem;color:#6B7280;margin-top:4px">No assessment has been submitted by this employee for this SOP. Only continue if you have verified the employee\'s competence in another way (e.g. paper certificate from a previous training provider).</div></div>';}
-md+='<div style="background:#FFFBEB;border-left:4px solid #FBB227;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:20px"><div style="font-weight:700;color:#243034;font-size:.85rem">You are about to manually mark this employee as COMPETENT.</div><div style="font-size:.82rem;color:#6B7280;margin-top:4px">To prevent the wrong-row mistake, please type the SOP code <b>'+sc+'</b> below to confirm.</div></div>';
-md+='<div style="margin-bottom:16px"><label style="font-weight:700;font-size:.78rem;text-transform:uppercase;color:#6B7280;display:block;margin-bottom:6px">Type the SOP Code to Confirm</label><input id="mp-sop-confirm" style="width:100%;padding:12px;border:2px solid #d1d5db;border-radius:8px;font-size:1rem;font-weight:600" placeholder="'+sc+'"></div>';
-md+='<div style="margin-bottom:20px"><label style="font-weight:700;font-size:.78rem;text-transform:uppercase;color:#6B7280;display:block;margin-bottom:6px">Reason (required, min 8 chars) — What is the basis for this manual pass?</label><textarea id="mp-reason" rows="3" style="width:100%;padding:12px;border:2px solid #d1d5db;border-radius:8px;font-size:.9rem;resize:vertical" placeholder="e.g. Employee presented original certificate of training from XYZ Training Provider dated 12 March 2025 — verified by HR file"></textarea></div>';
-md+='<div style="display:flex;gap:10px"><button onclick="confirmManualPass(\''+eid+'\',\''+sc+'\')" style="background:#22C55E;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-weight:700;cursor:pointer;font-size:.9rem">✓ Confirm Manual Pass</button><button onclick="document.getElementById(\'mp-overlay\').remove()" style="background:#f3f4f6;color:#243034;border:1px solid #d1d5db;border-radius:8px;padding:12px 24px;font-weight:600;cursor:pointer;font-size:.9rem">Cancel</button></div>';
+if(!hasAttempts){md+='<div style="background:#FEF2F2;border-left:4px solid #EF4444;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px"><div style="font-weight:700;color:#EF4444;font-size:.85rem">No attempts recorded.</div><div style="font-size:.82rem;color:#6B7280;margin-top:4px">No assessment submitted for this SOP. Only continue if competence was verified another way (e.g. paper certificate).</div></div>';}
+md+='<div style="background:#FFFBEB;border-left:4px solid #FBB227;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:20px"><div style="font-weight:700;color:#243034;font-size:.85rem">You are about to manually mark this employee as COMPETENT for '+sc+'.</div></div>';
+md+='<div style="margin-bottom:20px"><label style="font-weight:700;font-size:.78rem;text-transform:uppercase;color:#6B7280;display:block;margin-bottom:6px">Reason for Manual Pass</label><textarea id="mp-reason" rows="3" style="width:100%;padding:12px;border:2px solid #d1d5db;border-radius:8px;font-size:.9rem;resize:vertical" placeholder="e.g. Employee completed training today — result not saved due to system issue"></textarea></div>';
+md+='<div style="display:flex;gap:10px"><button onclick="confirmManualPass(\''+eid+'\',\''+sc+'\')" style="background:#22C55E;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-weight:700;cursor:pointer;font-size:.9rem">✓ Confirm</button><button onclick="document.getElementById(\'mp-overlay\').remove()" style="background:#f3f4f6;color:#243034;border:1px solid #d1d5db;border-radius:8px;padding:12px 24px;font-weight:600;cursor:pointer;font-size:.9rem">Cancel</button></div>';
 md+='</div></div>';
-ov.innerHTML=md;document.body.appendChild(ov);
-document.getElementById('mp-sop-confirm').focus();}
+ov.innerHTML=md;document.body.appendChild(ov);}
 
-function normSop(s){return (s||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();}
 async function confirmManualPass(eid,sc){
-var raw=document.getElementById('mp-sop-confirm').value||'';
-var typed=normSop(raw);
-var expected=normSop(sc);
 var reason=(document.getElementById('mp-reason').value||'').trim();
-if(typed!==expected){alert('DEBUG info:\nYou typed: ['+raw+'] ('+raw.length+' chars)\nStripped: ['+typed+']\nExpected: ['+expected+']\nMatch: '+(typed===expected));return;}
-if(reason.length<8){alert('Please provide a reason (at least 8 characters) for this manual pass.');return;}
+if(!reason){alert('Please enter a reason for this manual pass.');return;}
 var ov=document.getElementById('mp-overlay');if(ov)ov.remove();
 var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});
 await reloadCritical();
-// Mark all progress steps as done
 var k=eid+'_'+sc;prog[k]=prog[k]||{};prog[k].sr=true;prog[k].srd=prog[k].srd||now();prog[k].vw=true;prog[k].vwd=prog[k].vwd||now();
 if(sop.interactiveNA===false){prog[k].ia=true;prog[k].iad=prog[k].iad||now();}
-// Add a passing result record
 var qs=sop.qs||[];var total=qs.length||1;
 var r={id:gid(),eid:eid,sc:sc,score:total,total:total,pct:100,pass:true,att:1,dt:now(),manual:true,manualReason:reason};
 res.push(r);
 notifs.unshift({id:gid(),type:'pass',en:emp.name,es:emp.site,sc:sc,pct:100,att:1,dt:now()});
 var ok=await save();
-if(!ok){alert('⚠️ Save may have failed — please check your internet and try again.');return;}
-render();alert('✅ '+emp.name+' has been marked as PASSED for '+sc+'. They can now download their proof of competence.');}
+if(!ok){alert('Save may have failed. Check your internet and try again.');return;}
+render();alert(emp.name+' marked as PASSED for '+sc+'.');}
 
 async function resetAttempts(eid,sc){var emp=emps.find(function(e){return e.id===eid});
 var sop=sops.find(function(s){return s.code===sc});
