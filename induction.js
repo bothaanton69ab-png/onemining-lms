@@ -19,7 +19,7 @@ var inductionAtt     = [];   // {eid,mid,tid,dt,pct,pass}
 var inductionIntros  = {};   // {welcome,t1,t2,t3} -> video url
 var indActiveMod = null, indActiveTopic = null, indAns = {}, indResult = null;
 var indAssessing = false, indWatched = {};   // gating: must watch the topic video before assessment
-var indAdminEdit = null, indAdminTopic = null, indAdminTab = 'modules';
+var indAdminEdit = null, indAdminTopic = null, indAdminTab = 'modules', indEditQ = null;
 
 async function indLoad(){
   inductionModules = await cloudLoad('induction_modules', []);
@@ -320,7 +320,7 @@ function renderIndTopicForm(){
   var isNew=(indAdminTopic==='new');
   var tp=isNew?{id:'',title:'',content:'',video:'',qs:[]}:indTopic(m.id,indAdminTopic);
   if(!tp){ indAdminTopic=null; return renderIndModuleForm(); }
-  var h='<div class="topbar"><h1>'+(isNew?'New':'Edit')+' Topic</h1><button class="btn btn-o btn-sm" onclick="indAdminTopic=null;render()">← Back to module</button></div><div class="pc"><div class="card"><div class="cb">';
+  var h='<div class="topbar"><h1>'+(isNew?'New':'Edit')+' Topic</h1><button class="btn btn-o btn-sm" onclick="indEditQ=null;indAdminTopic=null;render()">← Back to module</button></div><div class="pc"><div class="card"><div class="cb">';
   h+='<p style="font-size:.82rem;color:#6B7280;margin:0 0 8px">Module: <b>'+m.title+'</b></p>';
   h+='<div class="fg"><label>Topic title</label><input id="it-title" value="'+(tp.title||'').replace(/"/g,'&quot;')+'"></div>';
   h+='<div class="fg"><label>Content (HTML allowed — shown above the video)</label><textarea id="it-content" rows="4">'+(tp.content||'')+'</textarea></div>';
@@ -332,10 +332,10 @@ function renderIndTopicForm(){
   h+='<div style="display:flex;gap:10px;margin-top:6px"><button class="btn btn-p" style="width:auto" onclick="saveIndTopic(\''+m.id+'\',\''+(tp.id||'new')+'\')">Save Topic</button></div>';
   if(!isNew){
     h+='<div style="margin-top:18px"><h3 style="font-size:1rem">Assessment questions ('+((tp.qs&&tp.qs.length)||0)+')</h3>';
-    (tp.qs||[]).forEach(function(q,i){ h+='<div style="padding:8px 0;border-bottom:1px solid #f0f0f0"><b>Q'+(i+1)+'.</b> '+q.t+' <span style="color:#22C55E;font-size:.8rem">(✓ '+String.fromCharCode(65+q.c)+')</span> <button class="btn btn-d btn-sm" style="float:right" onclick="delIndQ(\''+m.id+'\',\''+tp.id+'\','+i+')">Del</button></div>'; });
-    h+='<div class="card" style="margin-top:10px;background:#f8f9fa"><div class="cb"><div class="fg"><label>New question</label><input id="iq-t"></div>';
-    ['A','B','C','D'].forEach(function(l,i){ h+='<div class="fg" style="display:flex;gap:8px;align-items:center"><label style="width:18px;margin:0">'+l+'</label><input id="iq-o'+i+'" style="flex:1"><label style="display:flex;gap:4px;align-items:center;margin:0;font-size:.8rem"><input type="radio" name="iq-c" value="'+i+'"'+(i===0?' checked':'')+'> correct</label></div>'; });
-    h+='<button class="btn btn-p btn-sm" style="width:auto;margin-top:8px" onclick="addIndQ(\''+m.id+'\',\''+tp.id+'\')">+ Add Question</button></div></div>';
+    (tp.qs||[]).forEach(function(q,i){ h+='<div style="padding:8px 0;border-bottom:1px solid #f0f0f0'+(indEditQ===i?';background:#FFF8E1':'')+'"><b>Q'+(i+1)+'.</b> '+q.t+' <span style="color:#22C55E;font-size:.8rem">(✓ '+String.fromCharCode(65+q.c)+')</span> <button class="btn btn-d btn-sm" style="float:right" onclick="delIndQ(\''+m.id+'\',\''+tp.id+'\','+i+')">Del</button><button class="btn btn-o btn-sm" style="float:right;margin-right:6px" onclick="indEditQ='+i+';render()">Edit</button></div>'; });
+    var eq=(indEditQ!==null&&tp.qs&&tp.qs[indEditQ])?tp.qs[indEditQ]:null; h+='<div class="card" style="margin-top:10px;background:#f8f9fa"><div class="cb"><div class="fg"><label>'+(eq?('Editing question '+(indEditQ+1)):'New question')+'</label><input id="iq-t" value="'+(eq?eq.t.replace(/"/g,'&quot;'):'')+'"></div>';
+    ['A','B','C','D'].forEach(function(l,i){ h+='<div class="fg" style="display:flex;gap:8px;align-items:center"><label style="width:18px;margin:0">'+l+'</label><input id="iq-o'+i+'" style="flex:1" value="'+(eq?(eq.o[i]||'').replace(/"/g,'&quot;'):'')+'"><label style="display:flex;gap:4px;align-items:center;margin:0;font-size:.8rem"><input type="radio" name="iq-c" value="'+i+'"'+((eq?(eq.c===i):(i===0))?' checked':'')+'> correct</label></div>'; });
+    if(eq){ h+='<button class="btn btn-p btn-sm" style="width:auto;margin-top:8px" onclick="saveIndQ(\''+m.id+'\',\''+tp.id+'\','+indEditQ+')">Save changes</button> <button class="btn btn-o btn-sm" style="width:auto;margin-top:8px;margin-left:6px" onclick="indEditQ=null;render()">Cancel</button></div></div>'; } else { h+='<button class="btn btn-p btn-sm" style="width:auto;margin-top:8px" onclick="addIndQ(\''+m.id+'\',\''+tp.id+'\')">+ Add Question</button></div></div>'; }
     h+='</div>';
   } else { h+='<p style="color:#6B7280;font-size:.82rem;margin-top:10px">Save the topic first, then upload its video and add the assessment questions.</p>'; }
   return h+'</div></div></div>';
@@ -364,7 +364,8 @@ function delIndTopic(mid,tid){ var m=indModule(mid); if(!m)return; var tp=indTop
 function addIndQ(mid,tid){ var tp=indTopic(mid,tid); if(!tp)return; var t=document.getElementById('iq-t').value.trim(); var o=[0,1,2,3].map(function(i){return (document.getElementById('iq-o'+i).value||'').trim();}); var c=parseInt((document.querySelector('input[name="iq-c"]:checked')||{}).value||0);
   if(!t||o.some(function(x){return !x;})){alert('Fill the question and all 4 options');return;}
   tp.qs=tp.qs||[]; tp.qs.push({id:gid(),t:t,o:o,c:c}); indSave().then(function(){render();}); }
-function delIndQ(mid,tid,i){ var tp=indTopic(mid,tid); if(!tp)return; tp.qs.splice(i,1); indSave().then(function(){render();}); }
+function delIndQ(mid,tid,i){ var tp=indTopic(mid,tid); if(!tp)return; tp.qs.splice(i,1); indEditQ=null; indSave().then(function(){render();}); }
+function saveIndQ(mid,tid,i){ var tp=indTopic(mid,tid); if(!tp||!tp.qs||!tp.qs[i])return; var t=document.getElementById('iq-t').value.trim(); var o=[0,1,2,3].map(function(k){return (document.getElementById('iq-o'+k).value||'').trim();}); var c=parseInt((document.querySelector('input[name="iq-c"]:checked')||{}).value||0); if(!t||o.some(function(x){return !x;})){alert('Fill the question and all 4 options');return;} tp.qs[i]={id:tp.qs[i].id,t:t,o:o,c:c}; indEditQ=null; indSave().then(function(){render();}); }
 function resetEmpInduction(eid){ if(!confirm('Reset this employee\'s induction (clears completions and attempt locks so they can redo it)?'))return;
   inductionComp=inductionComp.filter(function(c){return c.eid!==eid;}); inductionAtt=inductionAtt.filter(function(a){return a.eid!==eid;});
   if(typeof logAudit==='function')logAudit('RESET INDUCTION',eid,''); indSave().then(function(){ if(typeof saveTNA==='function')saveTNA(); render(); }); }
