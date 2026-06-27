@@ -1,10 +1,9 @@
-// ONE MINING LMS - SUPABASE CONNECTION
+// ONE MINING TRAINING DEMO - SUPABASE CONNECTION
 // ======================================
-// INSTRUCTIONS:
-// 1. Log in to https://supabase.com
-// 2. Open your project > Settings > API
-// 3. Copy "Project URL" and paste below
-// 4. Copy "anon public" key and paste below
+// This is the DEMO build. It connects to the same Supabase project as the
+// live LMS, but reads/writes an ISOLATED table: "app_data_demo".
+// (The table name is set in app.js — see sb.from('app_data_demo').)
+// Live production data in the "app_data" table is NOT touched by this demo.
 // ======================================
 
 var SUPABASE_URL = 'https://aibtkbfgqluztlpohxhu.supabase.co';
