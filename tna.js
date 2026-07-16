@@ -363,7 +363,7 @@ function renderInterventions(){
     if(tnaSearch){ var q=tnaSearch.toLowerCase(); if((it.code+' '+it.name).toLowerCase().indexOf(q)<0) return false; }
     return true;
   });
-  h+='<div class="card"><div class="tw"><table><thead><tr><th>Code</th><th>Name</th><th>Programme</th><th>Critical</th><th>Validity</th><th>Linked course</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+  h+='<div class="card"><div class="tw"><table><thead><tr><th>Code</th><th>Name</th><th>Programme</th><th>Critical</th><th>Validity / Frequency</th><th>Linked course</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
   list.slice(0,400).forEach(function(it){
     h+='<tr'+(it.active===false?' style="opacity:.55"':'')+'>';
     h+='<td style="font-weight:700;color:#FBB227">'+it.code+'</td>';
@@ -388,7 +388,7 @@ function editIntervention(code){
   ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
   var m='<div class="mdl"><div class="mh"><h2>'+it.code+'</h2><button class="btn btn-o btn-sm" onclick="document.getElementById(\'iv-ov\').remove()">Close</button></div><div class="mbd">';
   m+='<div class="fg"><label>Name</label><input id="iv-name" value="'+(it.name||'').replace(/"/g,'&quot;')+'"></div>';
-  m+='<div class="fg"><label>Validity (when it expires & must be redone)</label><select id="iv-vm"><option value="">Not set</option>'+
+  m+='<div class="fg"><label>Validity / Frequency (when it expires & must be redone)</label><select id="iv-vm"><option value="">Not set</option>'+
      vOpt(0,'Once-off (no expiry)')+vOpt(12,'Annual')+vOpt(24,'2-yearly')+vOpt(36,'3-yearly')+vOpt(-1,'As required')+'</select></div>';
   m+='<div class="fg"><label>Linked in-app course (document/video/slides/assessment)</label><select id="iv-sop">'+sopOpts+'</select></div>';
   m+='<div style="display:flex;gap:10px;margin-top:10px"><button class="btn btn-p" style="width:auto" onclick="saveIntervention(\''+code+'\')">Save</button>';
@@ -421,7 +421,7 @@ function addInterventionNew(){
   m+='<div class="fg"><label>Code</label><input id="niv-code" placeholder="e.g. OM-EXTRA-001"></div>';
   m+='<div class="fg"><label>Name</label><input id="niv-name"></div>';
   m+='<div class="fg"><label>Programme</label><input id="niv-prog" list="niv-progs" placeholder="e.g. MINING SOPs"><datalist id="niv-progs">'+progs.map(function(p){return '<option value="'+p.replace(/"/g,'&quot;')+'">';}).join('')+'</datalist></div>';
-  m+='<div class="fg"><label>Validity</label><select id="niv-vm"><option value="">Not set</option><option value="0">Once-off (no expiry)</option><option value="12">Annual</option><option value="24">2-yearly</option><option value="36">3-yearly</option><option value="-1">As required</option></select></div>';
+  m+='<div class="fg"><label>Validity / Frequency</label><select id="niv-vm"><option value="">Not set</option><option value="0">Once-off (no expiry)</option><option value="12">Annual</option><option value="24">2-yearly</option><option value="36">3-yearly</option><option value="-1">As required</option></select></div>';
   m+='<div class="fg"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="niv-crit"> Critical</label></div>';
   m+='<div class="fg"><label>Linked in-app course (optional)</label><select id="niv-sop">'+sopOpts+'</select></div>';
   m+='<button class="btn btn-p" style="width:auto" onclick="saveNewIntervention()">Create Intervention</button>';
@@ -553,7 +553,7 @@ function renderCompEmp(eid){
   var req=empRequired(eid);
   h+='<div class="card"><div class="ch"><h3>Required Training ('+req.length+')</h3></div><div class="cb">';
   if(!jt) h+='<p style="color:#6B7280;font-size:.85rem;margin-bottom:10px">No job title set — set one above to load the required training, or add individual interventions below.</p>';
-  h+='<div class="tw"><table><thead><tr><th>Code</th><th>Intervention</th><th>Programme</th><th>Source</th><th>Validity</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+  h+='<div class="tw"><table><thead><tr><th>Code</th><th>Intervention</th><th>Programme</th><th>Source</th><th>Validity / Frequency</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
   req.sort(function(a,b){var pa=getIntervention(a.code),pb=getIntervention(b.code);return (pa?pa.programme:'').localeCompare(pb?pb.programme:'');});
   req.forEach(function(r){
     var it=getIntervention(r.code); var s=compStatus(eid,r.code);
@@ -633,7 +633,7 @@ function markComplete(eid,code){
   var it=getIntervention(code); var today=new Date().toISOString().slice(0,10);
   var ov=document.createElement('div'); ov.id='mc-ov'; ov.className='mbg'; ov.onclick=function(e){if(e.target===ov)ov.remove();};
   var m='<div class="mdl"><div class="mh"><h2>Mark complete — '+code+'</h2><button class="btn btn-o btn-sm" onclick="document.getElementById(\'mc-ov\').remove()">Close</button></div><div class="mbd">';
-  m+='<p style="font-size:.85rem;color:#6B7280;margin-bottom:10px">'+(it?it.name:'')+' · Validity: '+(it?validityLabel(it.validityMonths):'-')+'</p>';
+  m+='<p style="font-size:.85rem;color:#6B7280;margin-bottom:10px">'+(it?it.name:'')+' · Validity / Frequency: '+(it?validityLabel(it.validityMonths):'-')+'</p>';
   m+='<div class="fg"><label>Date completed</label><input type="date" id="mc-date" value="'+today+'"></div>';
   m+='<div class="fg"><label>Method</label><select id="mc-method"><option value="manual">Manual / classroom</option><option value="external">External / certificate</option><option value="assessment">In-app assessment</option></select></div>';
   m+='<div class="fg"><label>Note (optional)</label><input id="mc-note" placeholder="e.g. certificate number"></div>';
@@ -772,7 +772,7 @@ function renderManagerEmp(eid){
   var req=empRequired(eid);
   var h='<div class="topbar"><div style="display:flex;align-items:center;gap:12px;flex:1"><button class="btn btn-o btn-sm" onclick="mgrEmp=null;render()">← Back to report</button><div><h1>'+e.name+'</h1><span style="font-size:.78rem;color:#6B7280">'+e.id+' · '+e.site+' · '+(e.dept||'')+' · '+(empJobTitle(eid)||'No job set')+'</span></div></div>'+(isCompetent(eid)&&req.length?bg('COMPETENT','green'):bg('NOT YET COMPETENT','red'))+'</div><div class="pc">';
   // ID number intentionally hidden for manager/training roles
-  h+='<div class="card"><div class="ch"><h3>Training ('+req.length+')</h3></div><div class="tw"><table><thead><tr><th>Code</th><th>Intervention</th><th>Programme</th><th>Validity</th><th>Completed</th><th>Status</th></tr></thead><tbody>';
+  h+='<div class="card"><div class="ch"><h3>Training ('+req.length+')</h3></div><div class="tw"><table><thead><tr><th>Code</th><th>Intervention</th><th>Programme</th><th>Validity / Frequency</th><th>Completed</th><th>Status</th></tr></thead><tbody>';
   var rank={outstanding:0,expired:1,expiring:2,valid:3};
   req.sort(function(a,b){return rank[compStatus(eid,a.code).status]-rank[compStatus(eid,b.code).status];});
   req.forEach(function(r){ var it=getIntervention(r.code); var s=compStatus(eid,r.code);

@@ -66,3 +66,5 @@ tbody td{padding:10px 14px;border-bottom:1px solid #f0f0f0}tbody tr:hover{backgr
 .profile-avatar{width:80px;height:80px;border-radius:50%;background:#243034;color:#FBB227;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:800}
 .profile-info p{font-size:.85rem;margin:3px 0;color:#6B7280}.profile-info p b{color:#243034}
 .cm-cell{width:28px;height:28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:#fff}
+
+.sb-sec{font-size:.66rem;font-weight:700;letter-spacing:.09em;color:rgba(255,255,255,.4);padding:14px 0 4px 6px;text-transform:uppercase}

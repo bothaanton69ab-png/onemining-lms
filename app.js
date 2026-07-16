@@ -24,7 +24,7 @@ var adminSites=[],adminDepts=[],adminSops=[],adminEmpF='';
 // Load one key from Supabase
 async function cloudLoad(key, fallback) {
     try {
-        var { data, error } = await sb.from('app_data_demo').select('value').eq('key', key).single();
+        var { data, error } = await sb.from(TENANT_TABLE).select('value').eq('key', key).single();
         if (error || !data) return fallback;
         return data.value;
     } catch(e) { return fallback; }
@@ -33,7 +33,7 @@ async function cloudLoad(key, fallback) {
 // Save one key to Supabase
 async function cloudSave(key, value) {
     try {
-        var { error } = await sb.from('app_data_demo').upsert({ key: key, value: value, updated_at: new Date().toISOString() });
+        var { error } = await sb.from(TENANT_TABLE).upsert({ key: key, value: value, updated_at: new Date().toISOString() });
         if (error) { console.error('Save error for ' + key, error); return false; }
         return true;
     } catch(e) { console.error('Save failed for ' + key, e); return false; }
@@ -174,30 +174,34 @@ var el=document.getElementById('app');
 if(!user){el.innerHTML=renderLogin();return}
 if(user.role==='manager'||user.role==='training'){el.innerHTML=renderManagerShell();return}
 var isA=user.role==='admin';
-var sb='<aside class="sb"><div class="sb-brand"><h2>One <span class="gold">Mining</span></h2><p>Training LMS · DEMO</p></div><div class="sb-nav">';
+var sb='<aside class="sb"><div class="sb-brand"><h2>One <span class="gold">Mining</span></h2><p>Training LMS · '+TENANT_LABEL+'</p></div><div class="sb-nav">';
 sb+='<div class="ni'+(page==='dashboard'&&!activeSop?' a':'')+'" onclick="goPage(\'dashboard\')">📊 Dashboard</div>';
 sb+='<div class="ni'+(page==='library'||activeSop?' a':'')+'" onclick="goPage(\'library\')">📚 My Training</div>';
 if(!isA)sb+='<div class="ni'+(page==='myres'?' a':'')+'" onclick="goPage(\'myres\')">📋 My Results</div>';
 if(!isA)sb+='<div class="ni'+(page==='mycomp'?' a':'')+'" onclick="goPage(\'mycomp\')">🎯 My Competence</div>';
 if(!isA)sb+='<div class="ni'+(page==='myind'?' a':'')+'" onclick="goPage(\'myind\')">🎓 Induction</div>';
 if(isA){
-sb+='<div class="ni'+(page==='comp'?' a':'')+'" onclick="goPage(\'comp\')">🎯 Competence</div>';
-sb+='<div class="ni'+(page==='iassign'?' a':'')+'" onclick="goPage(\'iassign\')">➕ Assign Interventions</div>';
+sb+='<div class="sb-sec">SET UP</div>';
 sb+='<div class="ni'+(page==='mind'?' a':'')+'" onclick="goPage(\'mind\')">🎓 Manage Induction</div>';
 sb+='<div class="ni'+(page==='mint'?' a':'')+'" onclick="goPage(\'mint\')">🧩 Interventions</div>';
 sb+='<div class="ni'+(page==='mjp'?' a':'')+'" onclick="goPage(\'mjp\')">🏷️ Job Profiles</div>';
-sb+='<div class="ni'+(page==='expiry'?' a':'')+'" onclick="goPage(\'expiry\')">⏰ Expiry & Renewals</div>';
-sb+='<div class="ni'+(page==='tnaimp'?' a':'')+'" onclick="goPage(\'tnaimp\')">⬆️ TNA Import</div>';
-sb+='<div class="ni'+(page==='audit'?' a':'')+'" onclick="goPage(\'audit\')">📜 Audit Log</div>';
-sb+='<div class="ni'+(page==='mmgr'?' a':'')+'" onclick="goPage(\'mmgr\')">👔 Manager Accounts</div>';
-sb+='<div class="ni'+(page==='soparch'?' a':'')+'" onclick="goPage(\'soparch\')">🗄️ Training Archive</div>';
-sb+='<div class="ni'+(page==='msops'?' a':'')+'" onclick="goPage(\'msops\')">⚙️ Manage SOPs</div>';
+sb+='<div class="ni'+(page==='msops'?' a':'')+'" onclick="goPage(\'msops\')">⚙️ Manage Training Content</div>';
+sb+='<div class="ni'+(page==='smgmt'?' a':'')+'" onclick="goPage(\'smgmt\')">🏭 Manage Sites</div>';
+sb+='<div class="sb-sec">ASSIGN</div>';
+sb+='<div class="ni'+(page==='iassign'?' a':'')+'" onclick="goPage(\'iassign\')">➕ Assign Interventions</div>';
 sb+='<div class="ni'+(page==='massign'?' a':'')+'" onclick="goPage(\'massign\')">🔗 Assign Training</div>';
+sb+='<div class="ni'+(page==='tnaimp'?' a':'')+'" onclick="goPage(\'tnaimp\')">⬆️ TNA Import</div>';
+sb+='<div class="sb-sec">PEOPLE</div>';
 sb+='<div class="ni'+(page==='memps'?' a':'')+'" onclick="goPage(\'memps\')">👤 Manage Employees</div>';
-sb+='<div class="ni'+(page==='emprec'?' a':'')+'" onclick="goPage(\'emprec\')">👥 Employee Records</div>';
+sb+='<div class="ni'+(page==='emprec'?' a':'')+'" onclick="goPage(\'emprec\')">👥 Training Records</div>';
+sb+='<div class="ni'+(page==='mmgr'?' a':'')+'" onclick="goPage(\'mmgr\')">👔 Manager Accounts</div>';
+sb+='<div class="sb-sec">MONITOR & COMPLIANCE</div>';
+sb+='<div class="ni'+(page==='comp'?' a':'')+'" onclick="goPage(\'comp\')">🎯 Competence</div>';
+sb+='<div class="ni'+(page==='expiry'?' a':'')+'" onclick="goPage(\'expiry\')">⏰ Expiry & Renewals</div>';
 sb+='<div class="ni'+(page==='reports'?' a':'')+'" onclick="goPage(\'reports\')">📈 Reports</div>';
 sb+='<div class="ni'+(page==='anot'?' a':'')+'" onclick="goPage(\'anot\')">🔔 Notifications'+(notifs.length?' '+bg(notifs.length,'gold'):'')+' </div>';
-sb+='<div class="ni'+(page==='smgmt'?' a':'')+'" onclick="goPage(\'smgmt\')">🏭 Manage Sites</div>';}
+sb+='<div class="ni'+(page==='audit'?' a':'')+'" onclick="goPage(\'audit\')">📜 Audit Log</div>';
+sb+='<div class="ni'+(page==='soparch'?' a':'')+'" onclick="goPage(\'soparch\')">🗄️ Training Archive</div>';}
 sb+='</div><div class="sb-u"><div class="nm">'+user.name+'</div><div class="rl">'+(isA?'Administrator':user.id+' · '+user.site)+'</div><div class="ni" style="margin-top:8px;padding:8px 0" onclick="doLogout()">← Sign Out</div></div></aside>';
 var mc='<main class="mc">';
 if(activeSop)mc+=renderSopView();
@@ -381,7 +385,7 @@ if(!isA&&pr.sr)h+='<p style="text-align:center;margin-top:12px;color:#22C55E;fon
 h+='</div>';}
 if(tab==='vid'){h+='<div style="max-width:860px;margin:0 auto">';
 if(s.vidUrl)h+='<div style="background:#000;border-radius:10px;overflow:hidden;margin-bottom:16px"><video controls style="width:100%;display:block" src="'+s.vidUrl+'"></video></div>';
-else h+='<div style="background:#000;border-radius:10px;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;margin-bottom:16px"><p style="color:#fff;text-align:center;font-weight:600">Training Video<br><span style="font-size:.78rem;opacity:.5">'+(isA?'Upload via Manage SOPs':'No video yet')+'</span></p></div>';
+else h+='<div style="background:#000;border-radius:10px;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;margin-bottom:16px"><p style="color:#fff;text-align:center;font-weight:600">Training Video<br><span style="font-size:.78rem;opacity:.5">'+(isA?'Upload via Manage Training Content':'No video yet')+'</span></p></div>';
 if(!isA&&!pr.vw)h+='<div style="text-align:center"><button class="btn btn-p" style="width:auto;padding:12px 44px" onclick="markVid()">✓ I have watched the video</button></div>';
 if(!isA&&pr.vw)h+='<p style="text-align:center;color:#22C55E;font-weight:600">Completed '+fd(pr.vwd)+'</p>';
 h+='</div>';}
@@ -486,7 +490,7 @@ h+='</div></div></div>';return h;
 
 // === MANAGE SOPs (ADMIN) ===
 function renderMSops(){
-var h='<div class="topbar"><h1>Manage SOPs</h1><button class="btn btn-p btn-sm" onclick="toggleAddSop()">+ Add SOP</button></div><div class="pc">';
+var h='<div class="topbar"><h1>Manage Training Content</h1><button class="btn btn-p btn-sm" onclick="toggleAddSop()">+ Add SOP</button></div><div class="pc">';
 h+='<div id="add-sop-form" class="card hide"><div class="ch"><h3 id="sop-form-title">New SOP</h3></div><div class="cb"><input type="hidden" id="edit-sop-id" value=""><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
 h+='<div class="fg"><label>Code</label><input id="nsop-code" placeholder="OM-SOP-XXX-001"></div>';
 h+='<div class="fg"><label>Rev</label><input id="nsop-rev" value="Rev 1.0"></div>';
@@ -560,7 +564,7 @@ return h+'</tbody></table></div></div></div>';
 
 // === EMPLOYEE RECORDS ===
 function renderEmpRec(){
-var h='<div class="topbar"><h1>Employee Records</h1></div><div class="pc">';
+var h='<div class="topbar"><h1>Training Records</h1></div><div class="pc">';
 h+=filterBar(emps,'erSites','erDepts','erSearch');
 h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>ID</th><th>Name</th><th>Gender</th><th>Site</th><th>SOP</th><th>1st</th><th>2nd</th><th>3rd</th><th>Status</th><th>Proof</th></tr></thead><tbody>';
 filterEmps(emps,erSites,erDepts,erSearch).forEach(function(emp){
