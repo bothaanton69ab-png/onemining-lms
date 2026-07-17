@@ -111,13 +111,14 @@ async function save() {
         try{ clearances = mergeById(await cloudLoad('clearances', []), clearances); }catch(e){}
         unlockLog = mergeById(cloudUnlock, unlockLog);
 
-        // For emps and sops — admin is sole editor, use local version
-        // But merge emps by id to prevent losing employees added by other admins
-        var empMerged = cloudEmps.slice();
-        var cloudEmpIds = {};
-        cloudEmps.forEach(function(e) { cloudEmpIds[e.id.toUpperCase()] = true; });
-        emps.forEach(function(e) { if(!cloudEmpIds[e.id.toUpperCase()]) empMerged.push(e); });
-        emps = empMerged;
+        // For emps — the person editing (admin / HR / facilitator) has the freshest
+        // field-level changes (medical dates, contractor tags, clearance, etc.), so LOCAL
+        // wins for people who already exist. We only pull in employees that are in the cloud
+        // but NOT held locally (i.e. added by another admin), so nobody is lost either way.
+        // NB: use String(e.id) — some employee numbers are numeric and .toUpperCase() would throw.
+        var localEmpIds = {};
+        emps.forEach(function(e) { localEmpIds[String(e.id).toUpperCase()] = true; });
+        cloudEmps.forEach(function(e) { if(!localEmpIds[String(e.id).toUpperCase()]) emps.push(e); });
     } catch(e) {
         console.error('Merge-reload failed, saving local copy:', e);
     }
