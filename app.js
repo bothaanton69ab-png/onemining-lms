@@ -221,7 +221,7 @@ sb+='<div class="ni'+(page==='tnaimp'?' a':'')+'" onclick="goPage(\'tnaimp\')">�
 sb+='<div class="sb-sec">PEOPLE</div>';
 sb+='<div class="ni'+(page==='memps'?' a':'')+'" onclick="goPage(\'memps\')">👤 Manage Employees</div>';
 sb+='<div class="ni'+(page==='emprec'?' a':'')+'" onclick="goPage(\'emprec\')">👥 Training Records</div>';
-sb+='<div class="ni'+(page==='mmgr'?' a':'')+'" onclick="goPage(\'mmgr\')">👔 Manager Accounts</div>';
+sb+='<div class="ni'+(page==='mmgr'?' a':'')+'" onclick="goPage(\'mmgr\')">🔑 Team Access &amp; Permissions</div>';
 sb+='<div class="ni'+(page==='ccos'?' a':'')+'" onclick="goPage(\'ccos\')">🏗️ Contractor Companies</div>';
 sb+='<div class="ni'+(page==='medical'?' a':'')+'" onclick="goPage(\'medical\')">🩺 Medical Fitness</div>';
 sb+='<div class="ni'+(page==='clearance'?' a':'')+'" onclick="goPage(\'clearance\')">✅ Site Clearance</div>';
@@ -581,13 +581,19 @@ return h+'</div>';
 function renderMSops(){
 if(typeof can==='function'&&!can('trainmanage'))return accessDenied('Manage Training');
 if(contentEditId) return renderContentEditor(contentEditId);
-var h='<div class="topbar"><h1>Manage Training Content</h1></div><div class="pc">';
+var isAdminC=user&&user.role==='admin';
+var h='<div class="topbar"><h1>'+(isAdminC?'Manage Training Content':'My Training Modules')+'</h1></div><div class="pc">';
+if(isAdminC){
 h+='<div class="card"><div class="ch"><h3>Add a training item</h3></div><div class="cb" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="flex:1;min-width:160px"><label style="font-size:.76rem;font-weight:600">Code</label><input id="nc-code" placeholder="OM-SOP-XXX-001" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><div style="flex:2;min-width:220px"><label style="font-size:.76rem;font-weight:600">Title</label><input id="nc-title" placeholder="Training title" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><button class="btn btn-p" style="width:auto" onclick="createContent()">+ Create &amp; open</button></div></div>';
+} else {
+h+='<div class="card"><div class="cb"><b>Your assigned training modules.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">You can open and update the modules the administrator has assigned to you — add or replace the document, video, slides, questions and the acknowledgement wording. To be given access to more modules, contact your administrator.</p></div></div>';
+}
 var q=(typeof contentSearch!=='undefined'?contentSearch:'')||'';
 h+='<div class="card"><div class="cb"><input placeholder="🔎 Search code, title, programme or category..." value="'+q.replace(/"/g,'&quot;')+'" onchange="contentSearch=this.value;render()" style="width:100%;padding:10px 12px;border:2px solid #e2e5e9;border-radius:8px"></div></div>';
 var list=sops.slice();
+if(!isAdminC){ list=list.filter(function(s){return (typeof canModule==='function')?canModule(s.id):false;}); }
 if(q){var lq=q.toLowerCase(); list=list.filter(function(s){return ((s.code||'')+' '+(s.title||'')+' '+(s.programme||'')+' '+(s.cat||'')).toLowerCase().indexOf(lq)>=0;});}
-// ----- bulk edit toolbar -----
+if(isAdminC){
 var cnt=sops.filter(function(s){return msSel[s.id];}).length;
 var progOpts='<option value="">— choose programme —</option>'+(typeof programmes==='function'?programmes():[]).map(function(p){return '<option'+(msBulkProg===p?' selected':'')+'>'+p+'</option>';}).join('');
 var catOpts=(typeof catNames==='function'?catNames():[]).map(function(c){return '<option value="'+c.replace(/"/g,'&quot;')+'">';}).join('');
@@ -599,15 +605,16 @@ h+='<div style="min-width:180px"><label style="font-size:.72rem;font-weight:600"
 h+='<button class="btn btn-p" style="width:auto" onclick="msApplyCat()">Apply category</button>';
 h+='<button class="btn btn-o" style="width:auto" onclick="msClearSel()">Clear selection</button>';
 h+='</div></div></div>';
+}
 var allSel=list.length>0&&list.every(function(s){return msSel[s.id];});
-h+='<div class="card"><div class="tw"><table><thead><tr><th style="width:34px"><input type="checkbox" onclick="msSelAll(this.checked)"'+(allSel?' checked':'')+'></th><th>Code</th><th>Title / tags</th><th>Content</th><th>Manage</th></tr></thead><tbody>';
-if(!list.length)h+='<tr><td colspan="5" style="text-align:center;color:#6B7280;padding:20px">No items'+(q?' match your search':' yet')+'.</td></tr>';
+h+='<div class="card"><div class="tw"><table><thead><tr>'+(isAdminC?'<th style="width:34px"><input type="checkbox" onclick="msSelAll(this.checked)"'+(allSel?' checked':'')+'></th>':'')+'<th>Code</th><th>Title / tags</th><th>Content</th><th>Manage</th></tr></thead><tbody>';
+if(!list.length)h+='<tr><td colspan="'+(isAdminC?5:4)+'" style="text-align:center;color:#6B7280;padding:20px">'+(isAdminC?('No items'+(q?' match your search':' yet')+'.'):(q?'No assigned modules match your search.':'No training modules have been assigned to you yet. Contact your administrator.'))+'</td></tr>';
 list.forEach(function(s){
-h+='<tr><td><input type="checkbox" onclick="msToggle(\''+s.id+'\',this.checked)"'+(msSel[s.id]?' checked':'')+'></td>';
+h+='<tr>'+(isAdminC?'<td><input type="checkbox" onclick="msToggle(\''+s.id+'\',this.checked)"'+(msSel[s.id]?' checked':'')+'></td>':'');
 h+='<td style="font-weight:700;color:#FBB227">'+s.code+'</td>';
-h+='<td>'+s.title+'<br><span style="font-size:.72rem;color:#6B7280">'+(s.programme?s.programme+' · ':'<span style="color:#e07a00;font-weight:600">No programme</span> · ')+(s.cat||'—')+' · '+s.site+'</span></td>';
+h+='<td>'+s.title+'<br><span style="font-size:.72rem;color:#6B7280">'+(s.programme?s.programme+' · ':(isAdminC?'<span style="color:#e07a00;font-weight:600">No programme</span> · ':''))+(s.cat||'—')+' · '+s.site+'</span></td>';
 h+='<td><div style="display:flex;gap:4px;flex-wrap:wrap">'+(s.docName?bg('📄 Doc','green'):bg('No doc','gray'))+(s.vidName?bg('🎬 Video','green'):bg('No video','gray'))+(s.slidesName?bg('📊 Slides','green'):'')+bg(s.qs.length+' Qs',s.qs.length?'blue':'gray')+(s.ackRequired?bg('✍ Ack','gold'):'')+'</div></td>';
-h+='<td style="white-space:nowrap"><button class="btn btn-p btn-sm" onclick="manageContent(\''+s.id+'\')">⚙ Manage</button> <button class="btn btn-o btn-sm" onclick="openSop(\''+s.id+'\')">View</button> <button class="btn btn-d btn-sm" onclick="delSop(\''+s.id+'\')">Del</button></td></tr>';
+h+='<td style="white-space:nowrap"><button class="btn btn-p btn-sm" onclick="manageContent(\''+s.id+'\')">⚙ Manage</button>'+(isAdminC?' <button class="btn btn-o btn-sm" onclick="openSop(\''+s.id+'\')">View</button> <button class="btn btn-d btn-sm" onclick="delSop(\''+s.id+'\')">Del</button>':'')+'</td></tr>';
 });
 h+='</tbody></table></div></div>';
 return h+'</div>';
@@ -1235,9 +1242,9 @@ function filterJbEmps(){ var q=(document.getElementById('jb-search').value||'').
 // =====================  UNIFIED TRAINING CONTENT EDITOR  =====================
 var SOP_ACK_DEFAULT='I confirm that I have completed this training, that I understand its contents, and that it is my responsibility to apply it correctly in my work.';
 function newContentReset(){ qmMode='list'; qmEi=null; qmQt=''; qmOpts=['','','','']; qmCor=0; qmBulk=''; }
-function manageContent(id){ contentEditId=id; qmSopId=id; newContentReset(); render(); }
+function manageContent(id){ if(typeof canModule==='function'&&!canModule(id)){alert('You can only manage modules assigned to you.');return;} contentEditId=id; qmSopId=id; newContentReset(); render(); }
 function closeContent(){ contentEditId=null; qmSopId=null; render(); }
-function createContent(){ var code=document.getElementById('nc-code').value.trim(), title=document.getElementById('nc-title').value.trim(); if(!code||!title){alert('Enter a code and a title.');return;} if(sops.some(function(s){return s.code===code;})){alert('That code already exists.');return;} var s={id:gid(),code:code,rev:'Rev 1.0',title:title,desc:'',programme:'',cat:'General',site:'All Sites',html:'<h2>'+title+'</h2><p>Upload the document.</p>',docUrl:null,docName:null,vidUrl:null,vidName:null,slidesUrl:null,slidesName:null,qs:[],ackRequired:false,ackText:''}; sops.push(s); save(); manageContent(s.id); }
+function createContent(){ if(user&&user.role!=='admin'){alert('Only an administrator can create a new module. Ask admin to create it and assign it to you.');return;} var code=document.getElementById('nc-code').value.trim(), title=document.getElementById('nc-title').value.trim(); if(!code||!title){alert('Enter a code and a title.');return;} if(sops.some(function(s){return s.code===code;})){alert('That code already exists.');return;} var s={id:gid(),code:code,rev:'Rev 1.0',title:title,desc:'',programme:'',cat:'General',site:'All Sites',html:'<h2>'+title+'</h2><p>Upload the document.</p>',docUrl:null,docName:null,vidUrl:null,vidName:null,slidesUrl:null,slidesName:null,qs:[],ackRequired:false,ackText:''}; sops.push(s); save(); manageContent(s.id); }
 function saveContentDetails(id){ var s=sops.find(function(x){return x.id===id;}); if(!s)return; var nc=document.getElementById('ce-code').value.trim(); if(!nc){alert('Code is required.');return;} if(nc!==s.code&&sops.some(function(x){return x.code===nc;})){alert('Another item already uses that code.');return;} s.code=nc; s.rev=document.getElementById('ce-rev').value.trim()||'Rev 1.0'; s.title=document.getElementById('ce-title').value.trim()||s.title; s.desc=document.getElementById('ce-desc').value; s.programme=(document.getElementById('ce-prog')||{}).value||''; s.cat=document.getElementById('ce-cat').value||'General'; s.site=document.getElementById('ce-site').value||'All Sites'; save(); render(); alert('Details saved.'); }
 function saveContentAck(id){ var s=sops.find(function(x){return x.id===id;}); if(!s)return; s.ackRequired=document.getElementById('ce-ackreq').checked; s.ackText=document.getElementById('ce-acktext').value.trim(); save(); render(); alert('Acknowledgement settings saved.'); }
 function removeDoc(id){ if(!confirm('Remove the document from this item?'))return; var s=sops.find(function(x){return x.id===id;}); if(s){s.docUrl=null;s.docName=null;} save(); render(); }

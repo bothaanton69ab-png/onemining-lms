@@ -803,6 +803,8 @@ function mgrCaps(m){ if(!m)return []; if(m.caps&&m.caps.length)return m.caps.sli
 function can(cap){ if(typeof user==='undefined'||!user)return false; if(user.role==='admin')return true; return mgrCaps(user.mgr).indexOf(cap)>=0; }
 function acctSees(m){ if(!m||m.allAccess)return emps; var hasArea=(m.sites&&m.sites.length)||(m.depts&&m.depts.length)||(m.jobGroups&&m.jobGroups.length)||(m.emps&&m.emps.length); return hasArea?scopedEmps(m):emps; }
 function accessDenied(t){ return '<div class="topbar"><h1>'+(t||'No access')+'</h1></div><div class="pc"><div class="card"><div class="cb" style="text-align:center;padding:30px;color:#6B7280">You do not have permission to view this. Contact your administrator.</div></div></div>'; }
+function mgrModules(m){ return (m&&m.modules)?m.modules:[]; }
+function canModule(sopId){ if(typeof user==='undefined'||!user)return false; if(user.role==='admin')return true; if(typeof can==='function'&&!can('trainmanage'))return false; return mgrModules(user.mgr).indexOf(sopId)>=0; }
 var CAP_DEFS=[['compliance','View compliance reports'],['medical','Capture medicals (HR)'],['packs','Approve contractor packs'],['trainmanage','Manage training content'],['signoff','Final clearance sign-off (facilitator)']];
 function inScope(mgr,emp){
   if(!mgr) return false;
@@ -886,7 +888,8 @@ function renderManagerEmp(eid){
 // ----- Admin: manage manager accounts -----
 function renderManageManagers(){
   if(mmgrEdit!==null) return renderManagerForm();
-  var h='<div class="topbar"><h1>Manager Accounts</h1><button class="btn btn-p btn-sm" onclick="mmgrEdit=\'new\';render()">+ Add Account</button></div><div class="pc">';
+  var h='<div class="topbar"><h1>Team Access &amp; Permissions</h1><button class="btn btn-p btn-sm" onclick="mmgrEdit=\'new\';render()">+ Add Team Member</button></div><div class="pc">';
+  h+='<div class="card"><div class="cb"><b>Give your team access — without giving them admin.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">Create a login for each person and tick only the duties they may do: <b>HR</b> capturing medicals, the <b>responsible person</b> uploading and approving contractor packs, the <b>training facilitator</b> managing their assigned modules, and the <b>final clearance sign-off</b>. Give the same duty to two people so there is always a backup — and admin can always do everything as a fallback.</p></div></div>';
   h+='<div class="card"><div class="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Type</th><th>Scope</th><th>Actions</th></tr></thead><tbody>';
   managers.forEach(function(m){
     var scope=m.allAccess?'All sites':[((m.sites||[]).length?'Sites: '+m.sites.join(', '):''),((m.depts||[]).length?'Depts: '+m.depts.join(', '):''),((m.jobGroups||[]).length?'Groups: '+m.jobGroups.join(', '):''),((m.emps||[]).length?m.emps.length+' employees':'')].filter(Boolean).join(' · ')||'(none set)';
@@ -902,7 +905,7 @@ function renderManagerForm(){
   var allGroups=[]; jobprofiles.forEach(function(p){ if(p.group&&allGroups.indexOf(p.group)<0)allGroups.push(p.group); });
   var roleNow=(document.getElementById('mg-role')?document.getElementById('mg-role').value:m.role);
   var isTraining=roleNow==='training';
-  var h='<div class="topbar"><h1>'+(mmgrEdit==='new'?'New':'Edit')+' Manager Account</h1><button class="btn btn-o btn-sm" onclick="mmgrEdit=null;render()">← Back</button></div><div class="pc"><div class="card"><div class="cb">';
+  var h='<div class="topbar"><h1>'+(mmgrEdit==='new'?'New':'Edit')+' Team Member</h1><button class="btn btn-o btn-sm" onclick="mmgrEdit=null;render()">← Back</button></div><div class="pc"><div class="card"><div class="cb">';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
   h+='<div class="fg"><label>Full Name</label><input id="mg-name" value="'+(m.name||'').replace(/"/g,'&quot;')+'"></div>';
   h+='<div class="fg"><label>Username</label><input id="mg-user" value="'+(m.username||'').replace(/"/g,'&quot;')+'"></div>';
@@ -928,6 +931,12 @@ function renderManagerForm(){
   var _caps=(m.caps&&m.caps.length)?m.caps:(m.role==='training'?['compliance','medical','packs','trainmanage','signoff']:['compliance']);
   CAP_DEFS.forEach(function(c){ h+='<label style="display:block;padding:3px 0;font-size:.9rem"><input type="checkbox" class="mg-cap" value="'+c[0]+'"'+(_caps.indexOf(c[0])>=0?' checked':'')+'> '+c[1]+'</label>'; });
   h+='</div>';
+  h+='<div id="mg-mod-wrap" style="margin-top:14px;padding:12px 14px;border:1.5px solid #cbd5e1;border-radius:10px;background:#f8fafc"><label style="font-weight:700;font-size:.85rem">Training modules this person may manage</label><p style="font-size:.76rem;color:#6B7280;margin:2px 0 8px">Only applies if <b>Manage training content</b> is ticked above. Choose exactly which modules this facilitator may open and edit — they will not see or change anything else. Leave empty and they can manage none until you assign some.</p>';
+  h+='<input placeholder="Type a code or title to search modules..." oninput="empPickFilter(this,\'mg-mod-box\')" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px;margin-bottom:6px"><div id="mg-mod-box" style="max-height:220px;overflow:auto;border:1px solid #d1d5db;border-radius:8px;padding:8px">';
+  var _mods=(m.modules||[]); var _sops=(typeof sops!=='undefined'?sops.slice():[]); _sops.sort(function(a,b){return (a.code||'').localeCompare(b.code||'');});
+  if(!_sops.length)h+='<div style="color:#9ca3af;font-size:.82rem">No training modules exist yet. Create them under Manage Training Content first.</div>';
+  _sops.forEach(function(s){ h+='<label class="mg-pick-opt" style="display:block;padding:2px 4px;font-size:.85rem"><input type="checkbox" class="mg-mod-cb" value="'+s.id+'"'+(_mods.indexOf(s.id)>=0?' checked':'')+'> '+s.code+' — '+(s.title||'').replace(/</g,'&lt;')+(s.programme?' ('+s.programme+')':'')+'</label>'; });
+  h+='</div></div>';
   h+='<div style="margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="saveManager()">Save Account</button></div>';
   return h+'</div></div></div>';
 }
@@ -937,6 +946,7 @@ function saveManager(){
   if(!name||!un||!pw){ alert('Name, username and password are required'); return; }
   var allAccess=role==='training', sitesSel=[], grpSel=[], depts=[], empsSel=[], capsSel=[];
   document.querySelectorAll('.mg-cap:checked').forEach(function(c){capsSel.push(c.value);});
+  var modsSel=[]; document.querySelectorAll('.mg-mod-cb:checked').forEach(function(c){modsSel.push(c.value);});
   if(!allAccess){
     document.querySelectorAll('.mg-site:checked').forEach(function(c){sitesSel.push(c.value);});
     document.querySelectorAll('.mg-grp:checked').forEach(function(c){grpSel.push(c.value);});
@@ -945,10 +955,10 @@ function saveManager(){
   }
   if(mmgrEdit==='new'){
     if(getManager(un)){ alert('That username already exists'); return; }
-    managers.push({id:gid(),name:name,username:un,password:pw,role:role,allAccess:allAccess,sites:sitesSel,depts:depts,jobGroups:grpSel,emps:empsSel,caps:capsSel});
+    managers.push({id:gid(),name:name,username:un,password:pw,role:role,allAccess:allAccess,sites:sitesSel,depts:depts,jobGroups:grpSel,emps:empsSel,caps:capsSel,modules:modsSel});
     logAudit('ADD MANAGER', name+' ('+un+')', role);
   } else {
-    var mm=getManagerById(mmgrEdit); if(mm){ mm.name=name;mm.username=un;mm.password=pw;mm.role=role;mm.allAccess=allAccess;mm.sites=sitesSel;mm.depts=depts;mm.jobGroups=grpSel;mm.emps=empsSel;mm.caps=capsSel; logAudit('EDIT MANAGER', name+' ('+un+')', role); }
+    var mm=getManagerById(mmgrEdit); if(mm){ mm.name=name;mm.username=un;mm.password=pw;mm.role=role;mm.allAccess=allAccess;mm.sites=sitesSel;mm.depts=depts;mm.jobGroups=grpSel;mm.emps=empsSel;mm.caps=capsSel;mm.modules=modsSel; logAudit('EDIT MANAGER', name+' ('+un+')', role); }
   }
   saveTNA().then(function(){ mmgrEdit=null; render(); });
 }
