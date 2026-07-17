@@ -4,6 +4,7 @@ function now(){return new Date().toISOString()}
 function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
 var onboarding=[], acks=[], activeOnb=null, libSearch='', libCat='', libProg='';
+var asgnJobMode='individual', asgnJobEid='', asgnJobSite='', asgnJobDept='';
 function cleanStr(s){return(s||'').replace(/[^\x20-\x7E]/g,'').trim()}
 
 // Data variables (loaded from Supabase on init)
@@ -202,8 +203,8 @@ sb+='<div class="ni'+(page==='mjp'?' a':'')+'" onclick="goPage(\'mjp\')">🏷️
 sb+='<div class="ni'+(page==='msops'?' a':'')+'" onclick="goPage(\'msops\')">⚙️ Manage Training Content</div>';
 sb+='<div class="ni'+(page==='smgmt'?' a':'')+'" onclick="goPage(\'smgmt\')">🏭 Manage Sites</div>';
 sb+='<div class="sb-sec">ASSIGN</div>';
-sb+='<div class="ni'+(page==='iassign'?' a':'')+'" onclick="goPage(\'iassign\')">➕ Assign Interventions</div>';
-sb+='<div class="ni'+(page==='massign'?' a':'')+'" onclick="goPage(\'massign\')">🔗 Assign Training</div>';
+sb+='<div class="ni'+(page==='iassign'?' a':'')+'" onclick="goPage(\'iassign\')">➕ Bulk Assign</div>';
+sb+='<div class="ni'+(page==='massign'?' a':'')+'" onclick="goPage(\'massign\')">🔗 Assign Courses</div>';
 sb+='<div class="ni'+(page==='tnaimp'?' a':'')+'" onclick="goPage(\'tnaimp\')">⬆️ TNA Import</div>';
 sb+='<div class="sb-sec">PEOPLE</div>';
 sb+='<div class="ni'+(page==='memps'?' a':'')+'" onclick="goPage(\'memps\')">👤 Manage Employees</div>';
@@ -487,51 +488,70 @@ return h+'</tbody></table></div></div></div>';
 }
 // === ASSIGN TRAINING (ADMIN) ===
 function renderAssign(){
-var h='<div class="topbar"><h1>Assign Training</h1></div><div class="pc">';
-// Assign form
-h+='<div class="card"><div class="ch"><h3>Assign Training to Employees</h3></div><div class="cb">';
+var h='<div class="topbar"><h1>Assign Courses</h1></div><div class="pc">';
+
+// ============ Card 1: Assign by Job Profile (one-click) ============
+h+='<div class="card" style="border-left:4px solid #FBB227"><div class="ch"><h3>🎯 Assign by Job Profile</h3></div><div class="cb">';
+h+='<p style="color:#6B7280;font-size:.85rem;margin-bottom:12px">Hand a person — or a whole site or department — every course their job requires, in one click. The required list comes from each person\'s job profile; this assigns the linked training modules they still need.</p>';
+h+='<div class="fg" style="max-width:360px"><label>Assign for</label><select id="jb-mode" onchange="asgnJobMode=this.value;asgnJobEid=\'\';asgnJobSite=\'\';render()">';
+[['individual','One employee'],['site','Everyone at a site'],['dept','Everyone in a department'],['all','Everyone']].forEach(function(o){ h+='<option value="'+o[0]+'"'+(asgnJobMode===o[0]?' selected':'')+'>'+o[1]+'</option>'; });
+h+='</select></div>';
+if(asgnJobMode==='individual'){
+  h+='<div class="fg" style="max-width:520px"><label>Employee</label><input id="jb-search" placeholder="Search name or number..." oninput="filterJbEmps()" style="margin-bottom:6px"><select id="jb-emp" size="6" onchange="asgnJobEid=this.value;render()" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:4px"><option value="">Select...</option>';
+  emps.forEach(function(e){ h+='<option value="'+e.id+'"'+(asgnJobEid===e.id?' selected':'')+'>'+e.id+' — '+e.name+' ('+e.site+')</option>'; });
+  h+='</select></div>';
+  if(asgnJobEid){ h+=jobPreviewIndividual(asgnJobEid); }
+}else if(asgnJobMode==='site'){
+  h+='<div class="fg" style="max-width:360px"><label>Site</label><select id="jb-site" onchange="asgnJobSite=this.value;render()"><option value="">Select...</option>';
+  sites.forEach(function(s){ h+='<option'+(asgnJobSite===s?' selected':'')+'>'+s+'</option>'; });
+  h+='</select></div>';
+  if(asgnJobSite) h+=jobPreviewGroup();
+}else if(asgnJobMode==='dept'){
+  h+='<div class="fg" style="max-width:360px"><label>Department contains</label><input id="jb-dept" value="'+(asgnJobDept||'').replace(/"/g,'&quot;')+'" placeholder="e.g. Processing" onchange="asgnJobDept=this.value;render()"></div>';
+  if(asgnJobDept) h+=jobPreviewGroup();
+}else{ h+=jobPreviewGroup(); }
+h+='</div></div>';
+
+// ============ Card 2: Assign specific courses (manual) ============
+h+='<div class="card"><div class="ch"><h3>➕ Assign specific courses (manual)</h3></div><div class="cb">';
+h+='<p style="color:#6B7280;font-size:.82rem;margin-bottom:12px">For ad-hoc extras — pick any courses and assign them to a person, site or department.</p>';
 h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
 h+='<div class="fg"><label>Assign To</label><select id="asgn-mode" onchange="var m=this.value;document.getElementById(\'asgn-emp-row\').className=\'fg\'+(m===\'individual\'?\'\':\' hide\');document.getElementById(\'asgn-site-row\').className=\'fg\'+(m===\'site\'?\'\':\' hide\');document.getElementById(\'asgn-dept-row\').className=\'fg\'+(m===\'dept\'?\'\':\' hide\')"><option value="individual">Individual Employee</option><option value="site">All at Site</option><option value="dept">All in Department</option></select></div>';
-h+='<div class="fg"><label>Training Courses <span style="font-weight:400;color:#6B7280;font-size:.8rem">(select one or more)</span></label>';
-h+='<div style="border:1px solid #d1d5db;border-radius:8px;max-height:180px;overflow-y:auto;padding:8px">';
-sops.forEach(function(s){h+='<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;font-size:.9rem" onmouseover="this.style.background=\'#f3f4f6\'" onmouseout="this.style.background=\'transparent\'"><input type="checkbox" class="asgn-sop-cb" value="'+s.code+'" style="width:16px;height:16px;accent-color:#FBB227"><span style="font-weight:600;color:#FBB227;min-width:120px">'+s.code+'</span><span>'+s.title+'</span></label>'});
+h+='<div class="fg"><label>Training Courses <span style="font-weight:400;color:#6B7280;font-size:.8rem">(select one or more)</span></label><div style="border:1px solid #d1d5db;border-radius:8px;max-height:180px;overflow-y:auto;padding:8px">';
+sops.forEach(function(s){ h+='<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;font-size:.9rem"><input type="checkbox" class="asgn-sop-cb" value="'+s.code+'" style="width:16px;height:16px;accent-color:#FBB227"><span style="font-weight:600;color:#FBB227;min-width:120px">'+s.code+'</span><span>'+s.title+'</span></label>'; });
 h+='</div><div style="margin-top:6px;display:flex;gap:8px"><button type="button" class="btn btn-p btn-sm" style="font-size:.75rem;padding:4px 10px" onclick="document.querySelectorAll(\'.asgn-sop-cb\').forEach(function(c){c.checked=true})">Select All</button><button type="button" class="btn btn-o btn-sm" style="font-size:.75rem;padding:4px 10px" onclick="document.querySelectorAll(\'.asgn-sop-cb\').forEach(function(c){c.checked=false})">Clear All</button></div></div></div>';
-h+='<div id="asgn-emp-row" class="fg"><label>Employee</label>';
-h+='<input id="asgn-emp-search" placeholder="Type name or employee number to search..." oninput="filterAsgnEmps()" style="margin-bottom:6px">';
-h+='<select id="asgn-emp" size="6" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:4px"><option value="">Select...</option>';
-emps.forEach(function(e){h+='<option value="'+e.id+'">'+e.id+' — '+e.name+' ('+e.site+')</option>'});
+h+='<div id="asgn-emp-row" class="fg"><label>Employee</label><input id="asgn-emp-search" placeholder="Type name or employee number to search..." oninput="filterAsgnEmps()" style="margin-bottom:6px"><select id="asgn-emp" size="6" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:4px"><option value="">Select...</option>';
+emps.forEach(function(e){ h+='<option value="'+e.id+'">'+e.id+' — '+e.name+' ('+e.site+')</option>'; });
 h+='</select></div>';
 h+='<div id="asgn-site-row" class="fg hide"><label>Site</label><select id="asgn-site"><option value="">Select...</option>';
-sites.forEach(function(s){h+='<option>'+s+'</option>'});
+sites.forEach(function(s){ h+='<option>'+s+'</option>'; });
 h+='</select></div>';
 h+='<div id="asgn-dept-row" class="fg hide"><label>Department</label><input id="asgn-dept" placeholder="e.g. Processing"></div>';
 h+='<div class="fg"><label>Order / Sequence (lower = first)</label><input id="asgn-order" type="number" value="'+(assigns.length+1)+'" min="1"></div>';
-h+='<button class="btn btn-p" style="width:auto" onclick="doAssign()">Assign Training</button>';
+h+='<button class="btn btn-p" style="width:auto" onclick="doAssign()">Assign selected courses</button>';
 h+='</div></div>';
-// Current assignments
-h+='<div class="card"><div class="ch"><h3>Current Assignments ('+assigns.length+')</h3></div><div class="cb">';
-if(!assigns.length)h+='<p style="text-align:center;color:#6B7280;padding:20px">No assignments yet.</p>';
-else{
-h+='<div class="sf"><select id="asgn-filter-emp" onchange="render()"><option value="all">All Employees</option>';
-emps.forEach(function(e){h+='<option value="'+e.id+'">'+e.id+' — '+e.name+'</option>'});
-h+='</select><select id="asgn-filter-site" onchange="render()"><option value="all">All Sites</option>';
-sites.forEach(function(s){h+='<option>'+s+'</option>'});
-h+='</select></div>';
-var fe=document.getElementById('asgn-filter-emp');var fs2=document.getElementById('asgn-filter-site');
-var fEmp=fe?fe.value:'all';var fSite=fs2?fs2.value:'all';
-var fa=assigns.filter(function(a){
-var emp=emps.find(function(e){return e.id===a.eid});
-return(fEmp==='all'||a.eid===fEmp)&&(fSite==='all'||(emp&&emp.site===fSite));
-}).sort(function(a,b){return a.eid===b.eid?a.order-b.order:a.eid.localeCompare(b.eid)});
-h+='<div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>SOP Code</th><th>SOP Title</th><th>Order</th><th>Status</th><th>Assigned</th><th>Action</th></tr></thead><tbody>';
-fa.forEach(function(a){var emp=emps.find(function(e){return e.id===a.eid});var sop=sops.find(function(s){return s.code===a.sc});
-var st=getStatus(a.eid,a.sc);var stB=st==='passed'?bg('Completed','green'):st==='locked'?bg('Locked','red'):st==='progress'?bg('In Progress','gold'):bg('Not Started','gray');
-h+='<tr><td style="font-weight:600">'+(emp?emp.name:a.eid)+'</td><td>'+(emp?emp.site:'')+'</td><td style="color:#FBB227;font-weight:700">'+a.sc+'</td><td>'+(sop?sop.title:'')+'</td><td>'+a.order+'</td><td>'+stB+'</td><td>'+fd(a.dt)+'</td><td><button class="btn btn-d btn-sm" onclick="removeAssign(\''+a.eid+'\',\''+a.sc+'\')">Remove</button></td></tr>';
-});h+='</tbody></table></div>';}
-h+='</div></div></div>';return h;
-}
 
-// === MANAGE SOPs (ADMIN) ===
+// ============ Current assignments ============
+h+='<div class="card"><div class="ch"><h3>Current Assignments ('+assigns.length+')</h3></div><div class="cb">';
+if(!assigns.length){ h+='<p style="text-align:center;color:#6B7280;padding:20px">No assignments yet.</p>'; }
+else{
+  h+='<div class="sf" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"><select id="asgn-filter-emp" onchange="render()"><option value="all">All Employees</option>';
+  emps.forEach(function(e){ h+='<option value="'+e.id+'">'+e.id+' — '+e.name+'</option>'; });
+  h+='</select><select id="asgn-filter-site" onchange="render()"><option value="all">All Sites</option>';
+  sites.forEach(function(s){ h+='<option>'+s+'</option>'; });
+  h+='</select></div>';
+  var fe=document.getElementById('asgn-filter-emp'), fs2=document.getElementById('asgn-filter-site');
+  var fEmp=fe?fe.value:'all', fSite=fs2?fs2.value:'all';
+  var fa=assigns.filter(function(a){ var emp=emps.find(function(e){return e.id===a.eid}); return (fEmp==='all'||a.eid===fEmp)&&(fSite==='all'||(emp&&emp.site===fSite)); }).sort(function(a,b){return a.eid===b.eid?a.order-b.order:a.eid.localeCompare(b.eid)});
+  h+='<div class="tw"><table><thead><tr><th>Employee</th><th>Site</th><th>Course</th><th>Title</th><th>Status</th><th></th></tr></thead><tbody>';
+  fa.forEach(function(a){ var emp=emps.find(function(e){return e.id===a.eid}); var sop=sops.find(function(s){return s.code===a.sc}); var st=getStatus(a.eid,a.sc);
+    h+='<tr><td>'+(emp?emp.name:a.eid)+'<br><span style="font-size:.72rem;color:#6B7280">'+a.eid+'</span></td><td style="font-size:.8rem">'+(emp?emp.site:'')+'</td><td style="font-weight:700;color:#FBB227">'+a.sc+'</td><td>'+(sop?sop.title:'')+'</td><td>'+(st==='passed'?bg('Completed','green'):st==='locked'?bg('Locked','red'):st==='progress'?bg('In progress','gold'):bg('Not started','gray'))+'</td><td><button class="btn btn-d btn-sm" onclick="removeAssign(\''+a.eid+'\',\''+a.sc+'\')">Remove</button></td></tr>';
+  });
+  h+='</tbody></table></div>';
+}
+h+='</div></div>';
+return h+'</div>';
+}
 function renderMSops(){
 var h='<div class="topbar"><h1>Manage Training Content</h1><button class="btn btn-p btn-sm" onclick="toggleAddSop()">+ Add SOP</button></div><div class="pc">';
 h+='<div id="add-sop-form" class="card hide"><div class="ch"><h3 id="sop-form-title">New SOP</h3></div><div class="cb"><input type="hidden" id="edit-sop-id" value=""><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
@@ -1103,3 +1123,57 @@ w.document.write('<div class="ftr">'+o.title+' — official acknowledgement regi
 w.document.close(); w.focus(); w.print();
 }
 function libPickProg(v){ try{ libProg=decodeURIComponent(v); }catch(e){ libProg=v; } render(); }
+
+// ---------- Assign by Job Profile (one-click) ----------
+function jobRequiredCourses(eid){
+  var courses=[], seen={}, tracked=0;
+  if(typeof empRequired!=='function') return {courses:courses,tracked:0,hasJob:false,title:''};
+  var title=(typeof empJobTitle==='function')?empJobTitle(eid):'';
+  var prof=(title&&typeof getProfile==='function')?getProfile(title):null;
+  var req=empRequired(eid);
+  req.forEach(function(r){ var it=getIntervention(r.code); if(!it)return;
+    if(it.linkedSop){ var sop=sops.find(function(s){return s.code===it.linkedSop;});
+      if(sop && !seen[sop.code]){ seen[sop.code]=1; courses.push({sc:sop.code,title:sop.title,itCode:it.code,critical:!!it.critical,assigned:assigns.some(function(a){return a.eid===eid&&a.sc===sop.code;})}); }
+    } else { tracked++; }
+  });
+  return {courses:courses,tracked:tracked,hasJob:!!(title&&prof),title:title};
+}
+function targetEmpsForJob(){
+  if(asgnJobMode==='individual') return asgnJobEid?[asgnJobEid]:[];
+  if(asgnJobMode==='site') return asgnJobSite?emps.filter(function(e){return e.site===asgnJobSite;}).map(function(e){return e.id;}):[];
+  if(asgnJobMode==='dept') return asgnJobDept?emps.filter(function(e){return (e.dept||'').toLowerCase().indexOf(asgnJobDept.toLowerCase())>=0;}).map(function(e){return e.id;}):[];
+  return emps.map(function(e){return e.id;});
+}
+function jobPreviewIndividual(eid){
+  var emp=emps.find(function(e){return e.id===eid;}); if(!emp)return '';
+  var rc=jobRequiredCourses(eid);
+  var h='<div style="background:#f7f8fa;border:1px solid #eceef1;border-radius:12px;padding:14px 16px;margin-top:6px">';
+  if(!rc.hasJob){ return h+'<b>'+emp.name+'</b> has no job profile set. Set their job title under <b>Manage Employees</b> or <b>Job Profiles</b> first, and their required courses will appear here.</div>'; }
+  var missing=rc.courses.filter(function(c){return !c.assigned;});
+  h+='<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px"><div><b>'+emp.name+'</b> · Job profile: <b>'+rc.title+'</b><br><span style="font-size:.8rem;color:#6B7280">'+rc.courses.length+' required course'+(rc.courses.length===1?'':'s')+' · '+(rc.courses.length-missing.length)+' already assigned · '+missing.length+' to add'+(rc.tracked?' · '+rc.tracked+' tracked-only (no course)':'')+'</span></div>';
+  h+='<button class="btn btn-p" style="width:auto'+(missing.length?'':';opacity:.5;pointer-events:none')+'" onclick="doAssignByJob()">Assign '+missing.length+' course'+(missing.length===1?'':'s')+'</button></div>';
+  if(!rc.courses.length){ h+='<p style="color:#6B7280;font-size:.85rem">This job profile has no linked courses to assign'+(rc.tracked?' — its requirements are tracked-only':'')+'.</p>'; }
+  else{ h+='<div class="tw"><table><thead><tr><th>Course</th><th>Title</th><th>Requirement</th><th>Status</th></tr></thead><tbody>';
+    rc.courses.forEach(function(c){ h+='<tr><td style="font-weight:700;color:#FBB227">'+c.sc+'</td><td>'+c.title+(c.critical?' '+bg('Critical','red'):'')+'</td><td style="font-size:.76rem">'+c.itCode+'</td><td>'+(c.assigned?bg('✓ Assigned','green'):bg('To add','gold'))+'</td></tr>'; });
+    h+='</tbody></table></div>'; }
+  return h+'</div>';
+}
+function jobPreviewGroup(){
+  var list=targetEmpsForJob();
+  var withJob=0,toAdd=0,noJob=0;
+  list.forEach(function(eid){ var rc=jobRequiredCourses(eid); if(rc.hasJob){ withJob++; toAdd+=rc.courses.filter(function(c){return !c.assigned;}).length; } else noJob++; });
+  var h='<div style="background:#f7f8fa;border:1px solid #eceef1;border-radius:12px;padding:14px 16px;margin-top:6px">';
+  h+='<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center"><div><b>'+list.length+'</b> employee'+(list.length===1?'':'s')+' matched · <b>'+withJob+'</b> with a job profile · <b>'+toAdd+'</b> course assignment'+(toAdd===1?'':'s')+' to add'+(noJob?' · <span style="color:#b45309">'+noJob+' without a job profile</span>':'')+'</div>';
+  h+='<button class="btn btn-p" style="width:auto'+(toAdd?'':';opacity:.5;pointer-events:none')+'" onclick="doAssignByJob()">Assign '+toAdd+' course'+(toAdd===1?'':'s')+'</button></div>';
+  if(noJob)h+='<p style="font-size:.78rem;color:#6B7280;margin-top:8px">Employees without a job profile are skipped — set their job title first.</p>';
+  return h+'</div>';
+}
+function doAssignByJob(){
+  var list=targetEmpsForJob(); if(!list.length){alert('Select who to assign to first.');return;}
+  var order=assigns.reduce(function(m,a){return Math.max(m,a.order||0);},0);
+  var added=0, ppl={};
+  list.forEach(function(eid){ var rc=jobRequiredCourses(eid); if(!rc.hasJob)return; rc.courses.forEach(function(c){ if(!c.assigned && !assigns.some(function(a){return a.eid===eid&&a.sc===c.sc;})){ order++; assigns.push({eid:eid,sc:c.sc,order:order,dt:now()}); added++; ppl[eid]=1; } }); });
+  if(!added){alert('Nothing to add — those people already have all their job-required courses.');return;}
+  save();render();alert('Assigned '+added+' course'+(added===1?'':'s')+' across '+Object.keys(ppl).length+' employee'+(Object.keys(ppl).length===1?'':'s')+'.');
+}
+function filterJbEmps(){ var q=(document.getElementById('jb-search').value||'').toLowerCase(); var sel=document.getElementById('jb-emp'); if(!sel)return; var opts='<option value="">Select...</option>'; emps.forEach(function(e){ if(!q||e.id.toLowerCase().indexOf(q)>=0||e.name.toLowerCase().indexOf(q)>=0)opts+='<option value="'+e.id+'"'+(asgnJobEid===e.id?' selected':'')+'>'+e.id+' — '+e.name+' ('+e.site+')</option>'; }); sel.innerHTML=opts; }

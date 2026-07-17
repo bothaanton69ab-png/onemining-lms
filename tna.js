@@ -956,7 +956,7 @@ function iaTargets(){
   });
 }
 function renderIAssign(){
-  var h='<div class="topbar"><h1>Assign Interventions</h1></div><div class="pc">';
+  var h='<div class="topbar"><h1>Bulk Assign</h1></div><div class="pc">';
   h+='<div class="card" style="overflow:visible"><div class="ch"><h3>Bulk-assign training to many people at once</h3></div><div class="cb" style="overflow:visible">';
   h+='<p style="color:#6B7280;font-size:.85rem;margin-bottom:12px">Pick one or more interventions, then choose who gets them by Site, Department and/or specific employees (included if they match ANY selection). Optionally set a complete-by date — it shows as the due date and the person reads "Not yet started" until done. These are individual additions and require a reason.</p>';
   var intOpts=interventions.filter(function(i){return i.active!==false;}).map(function(i){return {v:i.code,l:i.code+' — '+(i.name||'')};});
