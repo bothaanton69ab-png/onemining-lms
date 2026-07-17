@@ -758,6 +758,11 @@ function loginModeChange(){
 }
 function getManager(username){ for(var i=0;i<managers.length;i++) if(managers[i].username&&managers[i].username.toLowerCase()===String(username).toLowerCase()) return managers[i]; return null; }
 function getManagerById(id){ for(var i=0;i<managers.length;i++) if(managers[i].id===id) return managers[i]; return null; }
+function mgrCaps(m){ if(!m)return []; if(m.caps&&m.caps.length)return m.caps.slice(); if(m.role==='training')return ['compliance','medical','packs','trainmanage','signoff']; return ['compliance']; }
+function can(cap){ if(typeof user==='undefined'||!user)return false; if(user.role==='admin')return true; return mgrCaps(user.mgr).indexOf(cap)>=0; }
+function acctSees(m){ if(!m||m.allAccess)return emps; var hasArea=(m.sites&&m.sites.length)||(m.depts&&m.depts.length)||(m.jobGroups&&m.jobGroups.length)||(m.emps&&m.emps.length); return hasArea?scopedEmps(m):emps; }
+function accessDenied(t){ return '<div class="topbar"><h1>'+(t||'No access')+'</h1></div><div class="pc"><div class="card"><div class="cb" style="text-align:center;padding:30px;color:#6B7280">You do not have permission to view this. Contact your administrator.</div></div></div>'; }
+var CAP_DEFS=[['compliance','View compliance reports'],['medical','Capture medicals (HR)'],['packs','Approve contractor packs'],['trainmanage','Manage training content'],['signoff','Final clearance sign-off (facilitator)']];
 function inScope(mgr,emp){
   if(!mgr) return false;
   if(mgr.allAccess) return true;
@@ -771,12 +776,23 @@ function scopedEmps(mgr){ return emps.filter(function(e){return inScope(mgr,e);}
 function isCompetent(eid){ var req=empRequired(eid); for(var i=0;i<req.length;i++){var s=compStatus(eid,req[i].code).status; if(s==='outstanding'||s==='expired'||s==='failed') return false;} return true; }
 
 function renderManagerShell(){
-  var mgr=user.mgr; var nm=user.name||'Manager';
-  var sb='<aside class="sb"><div class="sb-brand"><div class="sb-logo"><img src="'+BRAND.logo+'" alt=""></div><h2>'+BRAND.name+'</h2><p>'+(user.role==='training'?'Training Dept':'Manager')+'</p></div><div class="sb-nav">';
-  sb+='<div class="ni'+(mgrView==='clearance'?'':' a')+'" onclick="mgrView=\'report\';mgrEmp=null;render()">📋 Compliance Report</div>';
-  if(user.role==='training') sb+='<div class="ni'+(mgrView==='clearance'?' a':'')+'" onclick="mgrView=\'clearance\';mgrEmp=null;render()">✅ Site Clearance</div>';
+  var mgr=user.mgr; var nm=user.name||'User'; var caps=mgrCaps(mgr);
+  var label=caps.indexOf('signoff')>=0?'Training Facilitator':(caps.indexOf('trainmanage')>=0?'Training':(caps.indexOf('medical')>=0?'HR / Medical':(caps.indexOf('packs')>=0?'Contractor Packs':'Manager')));
+  var map={report:'compliance',medical:'medical',packs:'packs',training:'trainmanage',clearance:'signoff'};
+  var allowed=['report','medical','packs','training','clearance'].filter(function(v){return caps.indexOf(map[v])>=0;});
+  if(allowed.indexOf(mgrView)<0) mgrView=allowed[0]||'report';
+  var sb='<aside class="sb"><div class="sb-brand"><div class="sb-logo"><img src="'+BRAND.logo+'" alt=""></div><h2>'+BRAND.name+'</h2><p>'+label+'</p></div><div class="sb-nav">';
+  function ni(v,lbl){ if(allowed.indexOf(v)<0)return ''; return '<div class="ni'+(mgrView===v?' a':'')+'" onclick="mgrView=\''+v+'\';mgrEmp=null;contentEditId=null;render()">'+lbl+'</div>'; }
+  sb+=ni('report','📋 Compliance Report')+ni('medical','🩺 Medical Fitness')+ni('packs','🏗️ Contractor Companies')+ni('training','📚 Manage Training')+ni('clearance','✅ Site Clearance');
   sb+='</div><div class="sb-u"><div class="nm">'+nm+'</div><div class="rl">'+(mgr&&mgr.allAccess?'All sites':'Scoped access')+'</div><div class="ni" style="margin-top:8px;padding:8px 0" onclick="doLogout()">← Sign Out</div></div></aside>';
-  var mc='<main class="mc">'+((mgrView==='clearance'&&user.role==='training'&&typeof renderClearance==='function')?renderClearance():(mgrEmp?renderManagerEmp(mgrEmp):renderManagerReport()))+'</main>';
+  var body;
+  if(mgrView==='medical'&&can('medical')&&typeof renderMedical==='function')body=renderMedical();
+  else if(mgrView==='packs'&&can('packs')&&typeof renderContractorCos==='function')body=renderContractorCos();
+  else if(mgrView==='training'&&can('trainmanage')&&typeof renderMSops==='function')body=renderMSops();
+  else if(mgrView==='clearance'&&can('signoff')&&typeof renderClearance==='function')body=renderClearance();
+  else if(can('compliance'))body=(mgrEmp?renderManagerEmp(mgrEmp):renderManagerReport());
+  else body=accessDenied('No access');
+  var mc='<main class="mc">'+body+'</main>';
   return '<div class="app">'+sb+mc+'</div>';
 }
 function renderManagerReport(){
@@ -833,7 +849,8 @@ function renderManageManagers(){
   h+='<div class="card"><div class="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Type</th><th>Scope</th><th>Actions</th></tr></thead><tbody>';
   managers.forEach(function(m){
     var scope=m.allAccess?'All sites':[((m.sites||[]).length?'Sites: '+m.sites.join(', '):''),((m.depts||[]).length?'Depts: '+m.depts.join(', '):''),((m.jobGroups||[]).length?'Groups: '+m.jobGroups.join(', '):''),((m.emps||[]).length?m.emps.length+' employees':'')].filter(Boolean).join(' · ')||'(none set)';
-    h+='<tr><td style="font-weight:600">'+m.name+'</td><td>'+m.username+'</td><td>'+bg(m.role==='training'?'Training Dept':'Manager',m.allAccess?'blue':'gold')+'</td><td style="font-size:.78rem">'+scope+'</td><td style="white-space:nowrap"><button class="btn btn-o btn-sm" onclick="mmgrEdit=\''+m.id+'\';render()">Edit</button> <button class="btn btn-d btn-sm" onclick="delManager(\''+m.id+'\')">Del</button></td></tr>';
+    var _dc=mgrCaps(m).map(function(k){var f={compliance:'Compliance',medical:'Medical',packs:'Packs',trainmanage:'Training',signoff:'Sign-off'};return f[k]||k;}).join(', ');
+    h+='<tr><td style="font-weight:600">'+m.name+'</td><td>'+m.username+'</td><td>'+bg(m.allAccess?'All sites':'Scoped',m.allAccess?'blue':'gold')+'<br><span style="font-size:.68rem;color:#6B7280">'+_dc+'</span></td><td style="font-size:.78rem">'+scope+'</td><td style="white-space:nowrap"><button class="btn btn-o btn-sm" onclick="mmgrEdit=\''+m.id+'\';render()">Edit</button> <button class="btn btn-d btn-sm" onclick="delManager(\''+m.id+'\')">Del</button></td></tr>';
   });
   if(!managers.length) h+='<tr><td colspan="5" style="text-align:center;color:#6B7280;padding:24px">No manager accounts yet. Add one to give scoped, view-only compliance access.</td></tr>';
   return h+'</tbody></table></div></div></div>';
@@ -866,6 +883,10 @@ function renderManagerForm(){
     emps.forEach(function(e){ h+='<label class="mg-pick-opt" style="display:block;padding:2px 4px;font-size:.85rem"><input type="checkbox" class="mg-emp-cb" value="'+e.id+'"'+((m.emps||[]).indexOf(e.id)>=0?' checked':'')+'> '+e.id+' — '+e.name+'</label>'; });
     h+='</div></div></div>';
   } else { h+='<p style="color:#6B7280;font-size:.85rem;margin-top:8px">Training Dept account sees <b>all employees, all sites</b> — view-only, with ID numbers hidden.</p>'; }
+  h+='<div style="margin-top:14px;padding:12px 14px;border:1.5px solid #FBB227;border-radius:10px;background:#fffdf7"><label style="font-weight:700;font-size:.85rem">Duties — what this person may do</label><p style="font-size:.76rem;color:#6B7280;margin:2px 0 8px">Tick every function this login is allowed to use. Grant the same duty to two people so there is always a backup. Admin can always do all of these as a fallback.</p>';
+  var _caps=(m.caps&&m.caps.length)?m.caps:(m.role==='training'?['compliance','medical','packs','trainmanage','signoff']:['compliance']);
+  CAP_DEFS.forEach(function(c){ h+='<label style="display:block;padding:3px 0;font-size:.9rem"><input type="checkbox" class="mg-cap" value="'+c[0]+'"'+(_caps.indexOf(c[0])>=0?' checked':'')+'> '+c[1]+'</label>'; });
+  h+='</div>';
   h+='<div style="margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="saveManager()">Save Account</button></div>';
   return h+'</div></div></div>';
 }
@@ -873,7 +894,8 @@ function saveManager(){
   var name=document.getElementById('mg-name').value.trim(), un=document.getElementById('mg-user').value.trim(), pw=document.getElementById('mg-pass').value.trim();
   var role=document.getElementById('mg-role').value;
   if(!name||!un||!pw){ alert('Name, username and password are required'); return; }
-  var allAccess=role==='training', sitesSel=[], grpSel=[], depts=[], empsSel=[];
+  var allAccess=role==='training', sitesSel=[], grpSel=[], depts=[], empsSel=[], capsSel=[];
+  document.querySelectorAll('.mg-cap:checked').forEach(function(c){capsSel.push(c.value);});
   if(!allAccess){
     document.querySelectorAll('.mg-site:checked').forEach(function(c){sitesSel.push(c.value);});
     document.querySelectorAll('.mg-grp:checked').forEach(function(c){grpSel.push(c.value);});
@@ -882,10 +904,10 @@ function saveManager(){
   }
   if(mmgrEdit==='new'){
     if(getManager(un)){ alert('That username already exists'); return; }
-    managers.push({id:gid(),name:name,username:un,password:pw,role:role,allAccess:allAccess,sites:sitesSel,depts:depts,jobGroups:grpSel,emps:empsSel});
+    managers.push({id:gid(),name:name,username:un,password:pw,role:role,allAccess:allAccess,sites:sitesSel,depts:depts,jobGroups:grpSel,emps:empsSel,caps:capsSel});
     logAudit('ADD MANAGER', name+' ('+un+')', role);
   } else {
-    var mm=getManagerById(mmgrEdit); if(mm){ mm.name=name;mm.username=un;mm.password=pw;mm.role=role;mm.allAccess=allAccess;mm.sites=sitesSel;mm.depts=depts;mm.jobGroups=grpSel;mm.emps=empsSel; logAudit('EDIT MANAGER', name+' ('+un+')', role); }
+    var mm=getManagerById(mmgrEdit); if(mm){ mm.name=name;mm.username=un;mm.password=pw;mm.role=role;mm.allAccess=allAccess;mm.sites=sitesSel;mm.depts=depts;mm.jobGroups=grpSel;mm.emps=empsSel;mm.caps=capsSel; logAudit('EDIT MANAGER', name+' ('+un+')', role); }
   }
   saveTNA().then(function(){ mmgrEdit=null; render(); });
 }

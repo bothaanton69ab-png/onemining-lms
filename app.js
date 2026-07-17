@@ -577,6 +577,7 @@ h+='</div></div>';
 return h+'</div>';
 }
 function renderMSops(){
+if(typeof can==='function'&&!can('trainmanage'))return accessDenied('Manage Training');
 if(contentEditId) return renderContentEditor(contentEditId);
 var h='<div class="topbar"><h1>Manage Training Content</h1></div><div class="pc">';
 h+='<div class="card"><div class="ch"><h3>Add a training item</h3></div><div class="cb" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="flex:1;min-width:160px"><label style="font-size:.76rem;font-weight:600">Code</label><input id="nc-code" placeholder="OM-SOP-XXX-001" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><div style="flex:2;min-width:220px"><label style="font-size:.76rem;font-weight:600">Title</label><input id="nc-title" placeholder="Training title" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><button class="btn btn-p" style="width:auto" onclick="createContent()">+ Create &amp; open</button></div></div>';
@@ -1302,6 +1303,7 @@ function contractorCleared(eid){ var e=emps.find(function(x){return x.id===eid;}
 function coStatusBadge(c){ if(!c)return bg('No pack set','gray'); if(c.packStatus==='approved'){ if(c.expiry){ var t=new Date();t.setHours(0,0,0,0); if(new Date(c.expiry)<t) return bg('Expired','red'); } return bg('Approved','green'); } if(c.packStatus==='rejected')return bg('Rejected','red'); return bg('Pending','gold'); }
 
 function renderContractorCos(){
+  if(typeof can==='function'&&!can('packs'))return accessDenied('Contractor Companies');
   var h='<div class="topbar"><h1>Contractor Companies</h1></div><div class="pc">';
   h+='<div class="card"><div class="cb"><b>Contractor pack approval.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">One row per contractor company. Upload the company\'s contractor pack (SHE file, mandate, insurance, letter of good standing, audit) and set it to <b>Approved</b> once signed off, with an expiry date. <b>No contractor is cleared for site until their company\'s pack is approved</b> — their people can still do their training in the meantime, but final site clearance is held until the pack is approved. If a pack lapses or is rejected, all of that company\'s people flip back to Not cleared automatically.</p></div></div>';
   h+='<div class="card"><div class="ch"><h3>Add a contractor company</h3></div><div class="cb" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="flex:2;min-width:200px"><label style="font-size:.76rem;font-weight:600">Company name</label><input id="cco-name" placeholder="e.g. ABC Scaffolding" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><div style="flex:2;min-width:200px"><label style="font-size:.76rem;font-weight:600">Contact (optional)</label><input id="cco-contact" placeholder="Site rep / phone / email" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><button class="btn btn-p" style="width:auto" onclick="addCo()">+ Add</button></div></div>';
@@ -1328,7 +1330,7 @@ function renderContractorCos(){
 }
 function addCo(){ var n=document.getElementById('cco-name').value.trim(); if(!n){alert('Enter a company name.');return;} if(getCo(n)){alert('That company is already in the register.');return;} contractorCos.push({id:gid(),name:n,contact:document.getElementById('cco-contact').value.trim(),packStatus:'pending',packDocs:[],approvedBy:'',approvedAt:'',expiry:'',createdAt:now()}); save(); render(); }
 function addCoByName(v){ var nm=decodeURIComponent(v); if(getCo(nm))return; contractorCos.push({id:gid(),name:nm,contact:'',packStatus:'pending',packDocs:[],approvedBy:'',approvedAt:'',expiry:'',createdAt:now()}); save(); render(); }
-function setCoStatus(id,st){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; var exp=document.getElementById('cco-exp-'+id); if(exp)c.expiry=exp.value||''; if(st==='approved'){ if(!(c.packDocs&&c.packDocs.length)){ if(!confirm('No pack document has been uploaded yet. Approve anyway?'))return; } c.packStatus='approved'; c.approvedBy=(user&&user.name)||'admin'; c.approvedAt=now(); } else { c.packStatus=st; c.approvedAt=''; c.approvedBy=''; } if(typeof logAudit==='function')logAudit('CONTRACTOR PACK '+st.toUpperCase(), c.name, ''); save(); render(); }
+function setCoStatus(id,st){ if(typeof can==='function'&&!can('packs')){alert('Only the contractor-pack approver (or admin) can change pack status.');return;} var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; var exp=document.getElementById('cco-exp-'+id); if(exp)c.expiry=exp.value||''; if(st==='approved'){ if(!(c.packDocs&&c.packDocs.length)){ if(!confirm('No pack document has been uploaded yet. Approve anyway?'))return; } c.packStatus='approved'; c.approvedBy=(user&&user.name)||'admin'; c.approvedAt=now(); } else { c.packStatus=st; c.approvedAt=''; c.approvedBy=''; } if(typeof logAudit==='function')logAudit('CONTRACTOR PACK '+st.toUpperCase(), c.name, ''); save(); render(); }
 function delCo(id){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; if(!confirm('Remove '+c.name+' from the contractor register? Their people remain, but the pack gate is removed for them.'))return; contractorCos=contractorCos.filter(function(x){return x.id!==id;}); save(); render(); }
 function removeCoDoc(id,di){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; (c.packDocs||[]).splice(di,1); save(); render(); }
 function uploadCoDoc(id){ var inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.doc,.docx,image/*'; inp.onchange=async function(e){ var f=e.target.files[0]; if(!f)return; if(f.size>50*1024*1024){alert('Max 50MB.');return;} var path='contractor-packs/'+id+'_'+Date.now()+'_'+f.name; var r=await sb.storage.from('lms-files').upload(path,f); if(r.error){alert('Upload failed: '+r.error.message);return;} var u=sb.storage.from('lms-files').getPublicUrl(path); var c=contractorCos.find(function(x){return x.id===id;}); c.packDocs=c.packDocs||[]; c.packDocs.push({url:u.data.publicUrl,name:f.name}); await save(); render(); alert('Pack document uploaded.'); }; inp.click(); }
@@ -1341,6 +1343,7 @@ function medBadgeFor(eid){ var e=emps.find(function(x){return x.id===eid;})||{};
 function medLineFor(eid){ var e=emps.find(function(x){return x.id===eid;})||{}; if(medValid(eid))return 'Approved on system'+(e.medApprovedAt?' '+fd(e.medApprovedAt):'')+(e.medApprovedBy?' by '+e.medApprovedBy:'')+' · valid until '+fd(e.medExpiry); if(e.medStatus==='unfit')return 'Marked not fit for duty — see HR / occupational health.'; if(medExpired(eid))return 'Your medical has expired — book a renewal and provide proof to HR.'; return 'No valid medical captured. Complete your medical and provide your certificate to HR — you are responsible for your own proof.'; }
 
 function renderMedical(){
+  if(typeof can==='function'&&!can('medical'))return accessDenied('Medical Fitness');
   var h='<div class="topbar"><h1>Medical Fitness</h1></div><div class="pc">';
   h+='<div class="card"><div class="cb"><b>Certificate of Fitness register.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">Capture each person\'s medical fitness <b>status and dates only</b> — the medical certificate itself is <b>not</b> uploaded here, it stays on the HR system. Set a person to <b>Fit for duty</b> with an expiry date and approve them on the system; the person keeps their own proof and is responsible for it. A valid, unexpired medical is a <b>hard requirement for site clearance</b> — no employee or contractor is Cleared for site without one, and expiring medicals are flagged automatically under Expiry &amp; Renewals.</p></div></div>';
   h+=filterBar(emps,'medSites','medDepts','medSearch');
@@ -1357,8 +1360,8 @@ function renderMedical(){
     h+='<td style="font-size:.74rem">'+(e.contractor?bg('Contractor','gold')+(e.coName?'<br>'+e.coName:''):bg('Employee','blue'))+'</td>';
     h+='<td style="font-size:.8rem">'+e.site+'</td>';
     h+='<td>'+medBadgeFor(e.id)+'</td>';
-    h+='<td><input type="date" id="med-dt-'+e.id+'" value="'+(e.medDate||'')+'" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.78rem"></td>';
-    h+='<td><input type="date" id="med-ex-'+e.id+'" value="'+(e.medExpiry||'')+'" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.78rem"></td>';
+    h+='<td><input type="date" id="med-dt-'+e.id+'" value="'+(e.medDate||'')+'" onchange="_medDraft(\''+e.id+'\',\'dt\',this.value)" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.78rem"></td>';
+    h+='<td><input type="date" id="med-ex-'+e.id+'" value="'+(e.medExpiry||'')+'" onchange="_medDraft(\''+e.id+'\',\'ex\',this.value)" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.78rem"></td>';
     h+='<td style="font-size:.72rem;color:#6B7280">'+(e.medStatus==='fit'&&e.medApprovedAt?(e.medApprovedBy||'admin')+'<br>'+fd(e.medApprovedAt):'—')+'</td>';
     h+='<td style="white-space:nowrap"><button class="btn btn-gn btn-sm" onclick="approveMed(\''+e.id+'\')">✓ Fit &amp; approve</button> <button class="btn btn-o btn-sm" onclick="setMedUnfit(\''+e.id+'\')">Not fit</button> <button class="btn btn-d btn-sm" onclick="clearMed(\''+e.id+'\')">Clear</button></td></tr>';
   });
@@ -1367,7 +1370,8 @@ function renderMedical(){
   return h;
 }
 function _medReadDates(id){ var d=document.getElementById('med-dt-'+id), x=document.getElementById('med-ex-'+id); return {dt:d?d.value:'', ex:x?x.value:''}; }
-function approveMed(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; var v=_medReadDates(id); if(!v.ex){alert('Enter an expiry date before approving the medical.');return;} e.medStatus='fit'; e.medDate=v.dt||''; e.medExpiry=v.ex; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL APPROVED', e.id+' · '+e.name, 'valid to '+fd(v.ex)); save(); render(); }
+function _medDraft(id,which,val){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; if(which==='dt')e.medDate=val; else e.medExpiry=val; }
+function approveMed(id){ if(typeof can==='function'&&!can('medical')){alert('Only the HR / medical capturer (or admin) can approve medicals.');return;} var e=emps.find(function(x){return x.id===id;}); if(!e)return; var v=_medReadDates(id); if(!v.ex){alert('Enter an expiry date before approving the medical.');return;} e.medStatus='fit'; e.medDate=v.dt||''; e.medExpiry=v.ex; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL APPROVED', e.id+' · '+e.name, 'valid to '+fd(v.ex)); save(); render(); }
 function setMedUnfit(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; if(!confirm('Mark '+e.name+' as NOT FIT for duty? They will not be cleared for site.'))return; var v=_medReadDates(id); e.medStatus='unfit'; e.medDate=v.dt||''; e.medExpiry=v.ex||''; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL NOT FIT', e.id+' · '+e.name, ''); save(); render(); }
 function clearMed(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; e.medStatus=''; e.medDate=''; e.medExpiry=''; e.medApprovedBy=''; e.medApprovedAt=''; save(); render(); }
 
@@ -1394,8 +1398,8 @@ function buildClearSnap(eid){
 }
 function _clrTick(ok,label){ return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:.78rem;font-weight:600;color:'+(ok?'#15803d':'#b91c1c')+'">'+(ok?'✓':'✗')+' '+label+'</span>'; }
 function renderClearance(){
-  var isTrain=user&&(user.role==='training');
-  var base = isTrain ? (typeof scopedEmps==='function'?scopedEmps(user.mgr):emps) : emps;
+  if(typeof can==='function'&&!can('signoff'))return accessDenied('Site Clearance');
+  var base = (user&&user.role!=='admin'&&user.mgr&&typeof acctSees==='function') ? acctSees(user.mgr) : emps;
   var list = (typeof filterEmps==='function') ? filterEmps(base, clrSites, clrDepts, clrSearch) : base;
   list = (typeof contractorFilter==='function') ? contractorFilter(list,'clrType','clrCo') : list;
   var h='<div class="topbar"><h1>Site Clearance</h1><span style="font-size:.78rem;color:#6B7280">Final authorisation for site access</span></div><div class="pc">';
@@ -1422,6 +1426,7 @@ function renderClearance(){
   return h;
 }
 function signOffClearance(eid){
+  if(typeof can==='function'&&!can('signoff')){ alert('Only the training facilitator (or admin) can sign off site clearance.'); return; }
   var st=clearanceStatus(eid);
   if(!st.allOk){ alert('Sign-off is locked — this person still has outstanding requirements. All items must be complete first.'); return; }
   var e=emps.find(function(x){return x.id===eid;}); if(!e)return;
