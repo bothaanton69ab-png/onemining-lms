@@ -5,6 +5,7 @@ function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{da
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
 var onboarding=[], acks=[], activeOnb=null, libSearch='', libCat='', libProg='';
 var asgnJobMode='individual', asgnJobEid='', asgnJobSite='', asgnJobDept='';
+var contentEditId=null, contentSearch='';
 function cleanStr(s){return(s||'').replace(/[^\x20-\x7E]/g,'').trim()}
 
 // Data variables (loaded from Supabase on init)
@@ -448,7 +449,7 @@ if(isA){var h='<div class="card"><div class="ch"><h3>Answer Memorandum</h3></div
 s.qs.forEach(function(q,i){h+='<tr><td style="font-weight:700">Q'+(i+1)+'</td><td>'+q.t+'</td><td style="font-weight:700;color:#22C55E">'+String.fromCharCode(65+q.c)+') '+q.o[q.c]+'</td></tr>'});
 return h+'</tbody></table></div></div></div>';}
 if(!s.qs.length)return'<div class="card"><div class="cb" style="text-align:center;padding:28px;color:#6B7280">No assessment yet.</div></div>';
-if(ps)return'<div class="card"><div class="cb" style="text-align:center;padding:40px"><div class="ri ps">✓</div><h2 style="color:#22C55E">Competent</h2><p style="color:#6B7280;margin-top:8px">Training module completed.</p><button class="btn btn-p" style="width:auto;margin-top:16px" onclick="dlProofEmp(\''+user.id+'\',\''+s.code+'\')">📥 Download Proof</button></div></div>';
+if(ps){ if(s.ackRequired&&!sopAcked(user.id,s.code)) return '<div class="card" style="border-left:4px solid #FBB227"><div class="ch"><h3>Final step — Acknowledgement</h3></div><div class="cb"><div style="text-align:center;margin-bottom:14px"><div class="ri ps">✓</div><h2 style="color:#22C55E">Assessment passed</h2><p style="color:#6B7280;margin-top:6px">One last step to complete this module.</p></div><label style="display:flex;gap:10px;align-items:flex-start;font-size:.92rem"><input type="checkbox" id="sop-ack" style="margin-top:3px;width:18px;height:18px"> <span>'+(s.ackText||SOP_ACK_DEFAULT)+'</span></label><div style="text-align:center;margin-top:14px"><button class="btn btn-p" style="width:auto;padding:12px 40px" onclick="acknowledgeSop(\''+s.code+'\')">Acknowledge &amp; Complete</button></div></div></div>'; var _ar=sopAckRec(user.id,s.code); return '<div class="card"><div class="cb" style="text-align:center;padding:40px"><div class="ri ps">✓</div><h2 style="color:#22C55E">Competent</h2><p style="color:#6B7280;margin-top:8px">Training module completed.'+(_ar?'<br>Acknowledged '+fd(_ar.at):'')+'</p><button class="btn btn-p" style="width:auto;margin-top:16px" onclick="dlProofEmp(\''+user.id+'\',\''+s.code+'\')">📥 Download Proof</button></div></div>'; }
 if(lk)return'<div class="card"><div class="cb" style="text-align:center;padding:40px"><div class="ri fl">✕</div><h2 style="color:#EF4444">Locked</h2><p style="color:#6B7280;margin-top:8px">3 attempts used. Contact your administrator for assistance.</p></div></div>';
 if(!pr.sr||!pr.vw||(s.slidesUrl&&!pr.sl)){
 var need=[];if(!pr.sr)need.push('read the SOP');if(!pr.vw)need.push('watch the video');if(s.slidesUrl&&!pr.sl)need.push('view the slides');
@@ -553,30 +554,24 @@ h+='</div></div>';
 return h+'</div>';
 }
 function renderMSops(){
-var h='<div class="topbar"><h1>Manage Training Content</h1><button class="btn btn-p btn-sm" onclick="toggleAddSop()">+ Add SOP</button></div><div class="pc">';
-h+='<div id="add-sop-form" class="card hide"><div class="ch"><h3 id="sop-form-title">New SOP</h3></div><div class="cb"><input type="hidden" id="edit-sop-id" value=""><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
-h+='<div class="fg"><label>Code</label><input id="nsop-code" placeholder="OM-SOP-XXX-001"></div>';
-h+='<div class="fg"><label>Rev</label><input id="nsop-rev" value="Rev 1.0"></div>';
-h+='<div class="fg" style="grid-column:span 2"><label>Title</label><input id="nsop-title"></div>';
-h+='<div class="fg" style="grid-column:span 2"><label>Description</label><textarea id="nsop-desc"></textarea></div>';
-h+='<div class="fg"><label>Programme</label>'+progSelect('nsop-prog','')+'</div>';
-h+='<div class="fg"><label>Category (subject)</label><input id="nsop-cat" list="nsop-cats" placeholder="Choose or type"><datalist id="nsop-cats">'+catNames().map(function(c){return '<option value="'+c.replace(/"/g,'&quot;')+'">';}).join('')+'</datalist></div>';
-h+='<div class="fg"><label>Site</label><select id="nsop-site"><option>All Sites</option>';
-sites.forEach(function(s){h+='<option>'+s+'</option>'});
-h+='</select></div></div><div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="addSop()">Save</button><button class="btn btn-o" style="width:auto" onclick="toggleAddSop()">Cancel</button></div></div></div>';
-h+='<div class="card"><div class="tw"><table><thead><tr><th>Code</th><th>Title</th><th>Prog</th><th>Cat</th><th>Site</th><th>Doc</th><th>Video</th><th>Slides</th><th>Qs</th><th>Actions</th></tr></thead><tbody>';
-sops.forEach(function(s){
-h+='<tr><td style="font-weight:700;color:#FBB227">'+s.code+'</td><td>'+s.title+'</td><td style="font-size:.78rem">'+(s.programme||'-')+'</td><td>'+s.cat+'</td><td>'+s.site+'</td>';
-h+='<td>'+(s.docName?bg(s.docName,'green'):bg('None','gray'))+'</td>';
-h+='<td>'+(s.vidName?bg(s.vidName,'green'):bg('None','gray'))+'</td>';
-h+='<td>'+(s.slidesName?bg(s.slidesName,'green'):bg('None','gray'))+'</td>';
-h+='<td style="font-weight:700">'+s.qs.length+'</td>';
-h+='<td><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-p btn-sm" onclick="uploadDoc(\''+s.id+'\')">📄 Doc</button><button class="btn btn-p btn-sm" onclick="uploadVid(\''+s.id+'\')">🎬 Video</button><button class="btn btn-p btn-sm" onclick="uploadSlides(\''+s.id+'\')">📊 Slides</button>'+(s.slidesName?'<button class="btn btn-o btn-sm" onclick="removeSlides(\''+s.id+'\')">✕ Slides</button>':'')+'<button class="btn btn-bl btn-sm" onclick="openQEditor(\''+s.id+'\',\'add\')">+ Q</button><button class="btn btn-s btn-sm" onclick="openQEditor(\''+s.id+'\',\'bulk\')">Bulk</button><button class="btn btn-o btn-sm" onclick="editSop(\''+s.id+'\')">Edit</button><button class="btn btn-o btn-sm" onclick="openSop(\''+s.id+'\')">View</button><button class="btn btn-d btn-sm" onclick="delSop(\''+s.id+'\')">Del</button></div></td></tr>'});
+if(contentEditId) return renderContentEditor(contentEditId);
+var h='<div class="topbar"><h1>Manage Training Content</h1></div><div class="pc">';
+h+='<div class="card"><div class="ch"><h3>Add a training item</h3></div><div class="cb" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="flex:1;min-width:160px"><label style="font-size:.76rem;font-weight:600">Code</label><input id="nc-code" placeholder="OM-SOP-XXX-001" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><div style="flex:2;min-width:220px"><label style="font-size:.76rem;font-weight:600">Title</label><input id="nc-title" placeholder="Training title" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><button class="btn btn-p" style="width:auto" onclick="createContent()">+ Create &amp; open</button></div></div>';
+var q=(typeof contentSearch!=='undefined'?contentSearch:'')||'';
+h+='<div class="card"><div class="cb"><input placeholder="🔎 Search code, title, programme or category..." value="'+q.replace(/"/g,'&quot;')+'" onchange="contentSearch=this.value;render()" style="width:100%;padding:10px 12px;border:2px solid #e2e5e9;border-radius:8px"></div></div>';
+var list=sops.slice();
+if(q){var lq=q.toLowerCase(); list=list.filter(function(s){return ((s.code||'')+' '+(s.title||'')+' '+(s.programme||'')+' '+(s.cat||'')).toLowerCase().indexOf(lq)>=0;});}
+h+='<div class="card"><div class="tw"><table><thead><tr><th>Code</th><th>Title / tags</th><th>Content</th><th>Manage</th></tr></thead><tbody>';
+if(!list.length)h+='<tr><td colspan="4" style="text-align:center;color:#6B7280;padding:20px">No items'+(q?' match your search':' yet')+'.</td></tr>';
+list.forEach(function(s){
+h+='<tr><td style="font-weight:700;color:#FBB227">'+s.code+'</td>';
+h+='<td>'+s.title+'<br><span style="font-size:.72rem;color:#6B7280">'+(s.programme?s.programme+' · ':'')+(s.cat||'—')+' · '+s.site+'</span></td>';
+h+='<td><div style="display:flex;gap:4px;flex-wrap:wrap">'+(s.docName?bg('📄 Doc','green'):bg('No doc','gray'))+(s.vidName?bg('🎬 Video','green'):bg('No video','gray'))+(s.slidesName?bg('📊 Slides','green'):'')+bg(s.qs.length+' Qs',s.qs.length?'blue':'gray')+(s.ackRequired?bg('✍ Ack','gold'):'')+'</div></td>';
+h+='<td style="white-space:nowrap"><button class="btn btn-p btn-sm" onclick="manageContent(\''+s.id+'\')">⚙ Manage</button> <button class="btn btn-o btn-sm" onclick="openSop(\''+s.id+'\')">View</button> <button class="btn btn-d btn-sm" onclick="delSop(\''+s.id+'\')">Del</button></td></tr>';
+});
 h+='</tbody></table></div></div>';
-if(qmSopId)h+=renderQEditor();
 return h+'</div>';
 }
-
 function renderQEditor(){
 var sop=sops.find(function(s){return s.id===qmSopId});if(!sop)return'';
 var h='<div class="mbg" onclick="if(event.target===this)closeQEditor()"><div class="mdl"><div class="mh"><h2>Questions — '+sop.code+' ('+sop.qs.length+')</h2><button class="btn btn-o btn-sm" onclick="closeQEditor()">Close</button></div><div class="mbd">';
@@ -692,7 +687,7 @@ if(!emp){document.getElementById('login-err').textContent='Employee not found';r
 if(pin!==emp.pin){document.getElementById('login-err').textContent='Incorrect PIN';return}
 user=emp;page='dashboard';render();}
 function doLogout(){user=null;page='login';activeSop=null;render()}
-function goPage(p){page=p;activeSop=null;activeOnb=null;assessStarted=false;assessDone=false;assessResult=null;assessAns={};assessQs=[];if(typeof compEmp!=='undefined'){compEmp=null;jpEdit=null;}if(typeof indActiveMod!=='undefined'){indActiveMod=null;indAdminEdit=null;indResult=null;indAns={};}render()}
+function goPage(p){page=p;activeSop=null;activeOnb=null;contentEditId=null;qmSopId=null;assessStarted=false;assessDone=false;assessResult=null;assessAns={};assessQs=[];if(typeof compEmp!=='undefined'){compEmp=null;jpEdit=null;}if(typeof indActiveMod!=='undefined'){indActiveMod=null;indAdminEdit=null;indResult=null;indAns={};}render()}
 function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};assessQs=[];render()}
 function closeSop(){activeSop=null;render()}
 function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render()}
@@ -1177,3 +1172,68 @@ function doAssignByJob(){
   save();render();alert('Assigned '+added+' course'+(added===1?'':'s')+' across '+Object.keys(ppl).length+' employee'+(Object.keys(ppl).length===1?'':'s')+'.');
 }
 function filterJbEmps(){ var q=(document.getElementById('jb-search').value||'').toLowerCase(); var sel=document.getElementById('jb-emp'); if(!sel)return; var opts='<option value="">Select...</option>'; emps.forEach(function(e){ if(!q||e.id.toLowerCase().indexOf(q)>=0||e.name.toLowerCase().indexOf(q)>=0)opts+='<option value="'+e.id+'"'+(asgnJobEid===e.id?' selected':'')+'>'+e.id+' — '+e.name+' ('+e.site+')</option>'; }); sel.innerHTML=opts; }
+
+// =====================  UNIFIED TRAINING CONTENT EDITOR  =====================
+var SOP_ACK_DEFAULT='I confirm that I have completed this training, that I understand its contents, and that it is my responsibility to apply it correctly in my work.';
+function newContentReset(){ qmMode='list'; qmEi=null; qmQt=''; qmOpts=['','','','']; qmCor=0; qmBulk=''; }
+function manageContent(id){ contentEditId=id; qmSopId=id; newContentReset(); render(); }
+function closeContent(){ contentEditId=null; qmSopId=null; render(); }
+function createContent(){ var code=document.getElementById('nc-code').value.trim(), title=document.getElementById('nc-title').value.trim(); if(!code||!title){alert('Enter a code and a title.');return;} if(sops.some(function(s){return s.code===code;})){alert('That code already exists.');return;} var s={id:gid(),code:code,rev:'Rev 1.0',title:title,desc:'',programme:'',cat:'General',site:'All Sites',html:'<h2>'+title+'</h2><p>Upload the document.</p>',docUrl:null,docName:null,vidUrl:null,vidName:null,slidesUrl:null,slidesName:null,qs:[],ackRequired:false,ackText:''}; sops.push(s); save(); manageContent(s.id); }
+function saveContentDetails(id){ var s=sops.find(function(x){return x.id===id;}); if(!s)return; var nc=document.getElementById('ce-code').value.trim(); if(!nc){alert('Code is required.');return;} if(nc!==s.code&&sops.some(function(x){return x.code===nc;})){alert('Another item already uses that code.');return;} s.code=nc; s.rev=document.getElementById('ce-rev').value.trim()||'Rev 1.0'; s.title=document.getElementById('ce-title').value.trim()||s.title; s.desc=document.getElementById('ce-desc').value; s.programme=(document.getElementById('ce-prog')||{}).value||''; s.cat=document.getElementById('ce-cat').value||'General'; s.site=document.getElementById('ce-site').value||'All Sites'; save(); render(); alert('Details saved.'); }
+function saveContentAck(id){ var s=sops.find(function(x){return x.id===id;}); if(!s)return; s.ackRequired=document.getElementById('ce-ackreq').checked; s.ackText=document.getElementById('ce-acktext').value.trim(); save(); render(); alert('Acknowledgement settings saved.'); }
+function removeDoc(id){ if(!confirm('Remove the document from this item?'))return; var s=sops.find(function(x){return x.id===id;}); if(s){s.docUrl=null;s.docName=null;} save(); render(); }
+function removeVid(id){ if(!confirm('Remove the video from this item?'))return; var s=sops.find(function(x){return x.id===id;}); if(s){s.vidUrl=null;s.vidName=null;} save(); render(); }
+
+function renderContentEditor(id){
+var s=sops.find(function(x){return x.id===id;}); if(!s){ contentEditId=null; return renderMSops(); }
+var h='<div class="topbar"><div style="display:flex;align-items:center;gap:14px"><button class="btn btn-o btn-sm" onclick="closeContent()">← Back to list</button><div><h1>'+s.code+'</h1><span style="font-size:.76rem;color:#6B7280">'+s.title+'</span></div></div><button class="btn btn-o btn-sm" onclick="openSop(\''+s.id+'\')">👁 Preview as employee</button></div><div class="pc">';
+// 1. Details
+h+='<div class="card"><div class="ch"><h3>1. Details</h3></div><div class="cb"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
+h+='<div class="fg"><label>Code</label><input id="ce-code" value="'+(s.code||'').replace(/"/g,'&quot;')+'"></div>';
+h+='<div class="fg"><label>Revision</label><input id="ce-rev" value="'+(s.rev||'Rev 1.0').replace(/"/g,'&quot;')+'"></div>';
+h+='<div class="fg" style="grid-column:span 2"><label>Title</label><input id="ce-title" value="'+(s.title||'').replace(/"/g,'&quot;')+'"></div>';
+h+='<div class="fg" style="grid-column:span 2"><label>Description</label><textarea id="ce-desc">'+(s.desc||'')+'</textarea></div>';
+h+='<div class="fg"><label>Programme</label>'+progSelect('ce-prog',s.programme||'')+'</div>';
+h+='<div class="fg"><label>Category (subject)</label><input id="ce-cat" list="ce-cats" value="'+(s.cat||'').replace(/"/g,'&quot;')+'"><datalist id="ce-cats">'+catNames().map(function(c){return '<option value="'+c.replace(/"/g,'&quot;')+'">';}).join('')+'</datalist></div>';
+h+='<div class="fg"><label>Site</label><select id="ce-site"><option>All Sites</option>'+sites.map(function(x){return '<option'+(s.site===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>';
+h+='</div><button class="btn btn-p" style="width:auto;margin-top:12px" onclick="saveContentDetails(\''+id+'\')">Save details</button></div></div>';
+// 2. Document
+h+='<div class="card"><div class="ch"><h3>2. Document (PDF)</h3></div><div class="cb" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+(s.docName?bg(s.docName,'green'):bg('No document','gray'))+'<button class="btn btn-p btn-sm" onclick="uploadDoc(\''+id+'\')">Upload / Replace</button>'+(s.docName?'<button class="btn btn-o btn-sm" onclick="removeDoc(\''+id+'\')">Remove</button>':'')+'</div></div>';
+// 3. Video
+h+='<div class="card"><div class="ch"><h3>3. Video</h3></div><div class="cb" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+(s.vidName?bg(s.vidName,'green'):bg('No video','gray'))+'<button class="btn btn-p btn-sm" onclick="uploadVid(\''+id+'\')">Upload / Replace</button>'+(s.vidName?'<button class="btn btn-o btn-sm" onclick="removeVid(\''+id+'\')">Remove</button>':'')+'</div></div>';
+// 4. Presentation
+h+='<div class="card"><div class="ch"><h3>4. Presentation (slides PDF)</h3></div><div class="cb" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+(s.slidesName?bg(s.slidesName,'green'):bg('No slides','gray'))+'<button class="btn btn-p btn-sm" onclick="uploadSlides(\''+id+'\')">Upload / Replace</button>'+(s.slidesName?'<button class="btn btn-o btn-sm" onclick="removeSlides(\''+id+'\')">Remove</button>':'')+'</div></div>';
+// 5. Questions
+h+='<div class="card"><div class="ch"><h3>5. Questions ('+s.qs.length+')</h3></div><div class="cb">'+contentQPanel(s)+'</div></div>';
+// 6. Acknowledgement
+h+='<div class="card"><div class="ch"><h3>6. Acknowledgement (after the quiz)</h3></div><div class="cb">';
+h+='<label style="display:flex;align-items:center;gap:8px;font-size:.9rem;margin-bottom:10px"><input type="checkbox" id="ce-ackreq" '+(s.ackRequired?'checked':'')+' style="width:16px;height:16px"> Require the employee to sign an acknowledgement after they pass the assessment</label>';
+h+='<div class="fg"><label>Acknowledgement wording (leave blank to use the standard wording)</label><textarea id="ce-acktext" rows="3" placeholder="'+SOP_ACK_DEFAULT.replace(/"/g,'&quot;')+'">'+(s.ackText||'')+'</textarea></div>';
+h+='<button class="btn btn-p" style="width:auto" onclick="saveContentAck(\''+id+'\')">Save acknowledgement</button></div></div>';
+return h+'</div>';
+}
+
+function contentQPanel(sop){
+var h='<div class="tabs"><div class="tab'+(qmMode==='add'?' a':'')+'" onclick="setQmMode(\'add\')">Add / Edit</div><div class="tab'+(qmMode==='bulk'?' a':'')+'" onclick="setQmMode(\'bulk\')">Bulk import</div><div class="tab'+(qmMode==='list'?' a':'')+'" onclick="setQmMode(\'list\')">All ('+sop.qs.length+')</div></div>';
+if(qmMode==='add'){
+h+='<div class="fg"><label>Question</label><textarea id="qm-qt" rows="3">'+qmQt+'</textarea></div>';
+['A','B','C','D'].forEach(function(l,i){
+h+='<div class="fg" style="display:flex;gap:10px;align-items:center"><label style="width:18px;margin:0">'+l+')</label><input id="qm-o'+i+'" value="'+qmOpts[i].replace(/"/g,'&quot;')+'" style="flex:1"><label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;font-size:.8rem"><input type="radio" name="qm-cor" '+(qmCor===i?'checked':'')+' onchange="qmCor='+i+'"> Correct</label></div>';});
+if(qmEi!==null)h+='<div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="updateQ()">Update</button><button class="btn btn-o" style="width:auto" onclick="cancelQEdit()">Cancel</button></div>';
+else h+='<button class="btn btn-p" style="width:auto;margin-top:14px" onclick="addQ()">Add Question</button>';}
+if(qmMode==='bulk'){
+h+='<p style="font-size:.82rem;color:#6B7280;margin-bottom:12px">Number questions, A-D options. Mark correct with <b>*</b> or a line <b>Answer: B</b>.</p>';
+h+='<pre style="background:#f3f4f6;padding:12px;border-radius:8px;font-size:.76rem;margin-bottom:12px">1. What is the pass mark?\nA. 60%\nB. 100%*\nC. 70%\nD. 90%</pre>';
+h+='<div class="fg"><textarea id="qm-bulk" rows="10" placeholder="Paste questions, or use Upload below...">'+qmBulk+'</textarea></div>';
+h+='<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-p" style="width:auto" onclick="importBulk()">Import Pasted</button><button class="btn btn-s" style="width:auto" onclick="uploadBulkQs()">📄 Upload .csv / .txt</button><button class="btn btn-o" style="width:auto" onclick="dlQTemplate()">📥 CSV Template</button></div>';}
+if(qmMode==='list'){
+if(!sop.qs.length)h+='<p style="color:#6B7280;text-align:center;padding:20px">No questions yet. Use Add / Edit or Bulk import.</p>';
+else sop.qs.forEach(function(q,i){
+h+='<div style="padding:10px 0;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;gap:12px"><div style="flex:1"><b style="color:#FBB227">Q'+(i+1)+'.</b> '+q.t+'<br><span style="font-size:.8rem;color:#22C55E">✓ '+String.fromCharCode(65+q.c)+') '+q.o[q.c]+'</span></div><div style="display:flex;gap:5px;flex-shrink:0"><button class="btn btn-o btn-sm" onclick="editQ('+i+')">Edit</button><button class="btn btn-d btn-sm" onclick="deleteQ(\''+q.id+'\')">Del</button></div></div>';});}
+return h;
+}
+
+// ---------- employee: acknowledgement after passing ----------
+function sopAcked(eid,sc){ return acks.some(function(a){return a.eid===eid&&a.oid==='SOP:'+sc;}); }
+function sopAckRec(eid,sc){ return acks.find(function(a){return a.eid===eid&&a.oid==='SOP:'+sc;}); }
+async function acknowledgeSop(sc){ var cb=document.getElementById('sop-ack'); if(!cb||!cb.checked){alert('Please tick the acknowledgement to complete the module.');return;} if(sopAcked(user.id,sc)){render();return;} acks.push({id:gid(),eid:user.id,oid:'SOP:'+sc,at:now()}); var ok=await save(); if(!ok)alert('⚠️ Save may have failed — please check your connection and try again.'); render(); }
