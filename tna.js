@@ -24,7 +24,7 @@ var iaInts=[], iaSites=[], iaDepts=[], iaEmps=[];
 var meType='all';
 var meSites=[], meDepts=[], meSearch='', erSites=[], erDepts=[], erSearch='';
 var erType='all', erCo=[];
-var compType='all', compCo=[], exType='all', exCo=[], opType='all', opCo=[];
+var compType='all', compCo=[], exType='all', exCo=[], opType='all', opCo=[], dashType='all', dashCo=[];
 function getDueBy(eid,code){ var a=xassigns.filter(function(x){return x.eid===eid&&x.code===code&&x.type==='add'&&x.active!==false&&x.dueBy;}); return a.length?a[0].dueBy:null; }
 function empCompClass(eid){
   var req=empRequired(eid);

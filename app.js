@@ -312,18 +312,22 @@ h+=msHtml('Departments', distinctVals(emps,'dept'), 'adminDepts');
 h+=msHtml('Courses', sops.map(function(s){return {v:s.code,l:s.code+' — '+s.title};}), 'adminSops');
 h+='<button class="btn btn-o btn-sm" onclick="adminSites=[];adminDepts=[];adminSops=[];adminEmpF=\'\';render()">Clear all</button>';
 h+='</div>';
+h+=contractorFilterRow('dashType','dashCo');
 // Filter employees (multi-select)
 var fEmps=emps.filter(function(e){
 if(!inArrOrAll(adminSites,e.site)) return false;
 if(!inArrOrAll(adminDepts,e.dept||'')) return false;
 if(adminEmpF){var q=adminEmpF.toLowerCase(); if((e.name+' '+e.id).toLowerCase().indexOf(q)<0) return false;}
 return true});
+fEmps=contractorFilter(fEmps,'dashType','dashCo');
 // Stats
 var totalAssigns=0,totalCompleted=0,totalLocked=0;
 fEmps.forEach(function(e){var ea=getEmpAssigns(e.id);if(adminSops&&adminSops.length)ea=ea.filter(function(a){return adminSops.indexOf(a.sc)>=0;});ea.forEach(function(a){
 totalAssigns++;if(hasPassed(e.id,a.sc))totalCompleted++;if(isLocked(e.id,a.sc))totalLocked++;})});
 var compRate=totalAssigns?Math.round(totalCompleted/totalAssigns*100):0;
-h+='<div class="sg"><div class="sc gd"><div class="l">Employees</div><div class="v">'+fEmps.length+'</div></div>';
+var _empN=fEmps.filter(function(e){return !e.contractor;}).length,_conN=fEmps.filter(function(e){return e.contractor;}).length;
+h+='<div class="sg"><div class="sc gd"><div class="l">Employees</div><div class="v">'+_empN+'</div></div>';
+h+='<div class="sc gd"><div class="l">Contractors</div><div class="v">'+_conN+'</div></div>';
 h+='<div class="sc bl"><div class="l">Assigned Courses</div><div class="v">'+totalAssigns+'</div></div>';
 h+='<div class="sc gn"><div class="l">Completed</div><div class="v">'+totalCompleted+'</div></div>';
 h+='<div class="sc rd"><div class="l">Locked / Not Yet Competent</div><div class="v">'+totalLocked+'</div></div></div>';
@@ -334,7 +338,7 @@ var fSops=(adminSops&&adminSops.length)?sops.filter(function(s){return adminSops
 fSops.forEach(function(s){h+='<th style="text-align:center;font-size:.65rem;max-width:80px;white-space:normal">'+s.code+'</th>'});
 h+='<th>Actions</th></tr></thead><tbody>';
 fEmps.forEach(function(e){
-h+='<tr><td style="font-weight:600">'+e.name+'<br><span style="font-size:.72rem;color:#6B7280">'+e.id+'</span></td><td style="font-size:.78rem">'+e.site+'</td>';
+h+='<tr><td style="font-weight:600">'+e.name+'<br><span style="font-size:.72rem;color:#6B7280">'+e.id+(e.contractor?' '+bg('Contractor','gold')+(e.coName?' '+e.coName:''):'')+'</span></td><td style="font-size:.78rem">'+e.site+'</td>';
 fSops.forEach(function(s){
 var ea=getEmpAssigns(e.id);var assigned=ea.some(function(a){return a.sc===s.code});
 if(!assigned){h+='<td style="text-align:center"><span class="cm-cell" style="background:#e5e7eb;color:#9ca3af">—</span></td>';return}
