@@ -3,7 +3,7 @@ function gid(){return Math.random().toString(36).substr(2,9)}
 function now(){return new Date().toISOString()}
 function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
-var onboarding=[], acks=[], activeOnb=null, libSearch='', libCat='', libProg='';
+var onboarding=[], acks=[], activeOnb=null, libSearch='', libCat='', libProg='', contractorCos=[];
 var asgnJobMode='individual', asgnJobEid='', asgnJobSite='', asgnJobDept='';
 var contentEditId=null, contentSearch='';
 function cleanStr(s){return(s||'').replace(/[^\x20-\x7E]/g,'').trim()}
@@ -104,6 +104,7 @@ async function save() {
         if(removedAssigns.length){assigns=assigns.filter(function(a){return removedAssigns.indexOf(a.eid+'||'+a.sc)<0});}
         notifs = mergeById(cloudNotifs, notifs);
         try{ acks = mergeById(await cloudLoad('acks', []), acks); }catch(e){}
+        try{ contractorCos = await cloudLoad('contractor_cos', []); }catch(e){}
         unlockLog = mergeById(cloudUnlock, unlockLog);
 
         // For emps and sops — admin is sole editor, use local version
@@ -127,7 +128,8 @@ async function save() {
         cloudSave('assigns', assigns),
         cloudSave('unlock', unlockLog),
         cloudSave('onboarding', onboarding),
-        cloudSave('acks', acks)
+        cloudSave('acks', acks),
+        cloudSave('contractor_cos', contractorCos)
     ]);
     var failed = results.filter(function(r){ return !r; }).length;
     if (failed > 0) { console.error(failed + ' save(s) failed'); return false; }
@@ -161,6 +163,7 @@ async function init() {
         adminPass = await cloudLoad('admin_password', 'admin');
         onboarding = await cloudLoad('onboarding', []);
         acks = await cloudLoad('acks', []);
+        contractorCos = await cloudLoad('contractor_cos', []);
         await tnaLoad();
         await indLoad();
         render();
@@ -211,6 +214,7 @@ sb+='<div class="sb-sec">PEOPLE</div>';
 sb+='<div class="ni'+(page==='memps'?' a':'')+'" onclick="goPage(\'memps\')">👤 Manage Employees</div>';
 sb+='<div class="ni'+(page==='emprec'?' a':'')+'" onclick="goPage(\'emprec\')">👥 Training Records</div>';
 sb+='<div class="ni'+(page==='mmgr'?' a':'')+'" onclick="goPage(\'mmgr\')">👔 Manager Accounts</div>';
+sb+='<div class="ni'+(page==='ccos'?' a':'')+'" onclick="goPage(\'ccos\')">🏗️ Contractor Companies</div>';
 sb+='<div class="sb-sec">MONITOR & COMPLIANCE</div>';
 sb+='<div class="ni'+(page==='comp'?' a':'')+'" onclick="goPage(\'comp\')">🎯 Competence</div>';
 sb+='<div class="ni'+(page==='expiry'?' a':'')+'" onclick="goPage(\'expiry\')">⏰ Expiry & Renewals</div>';
@@ -240,6 +244,7 @@ else if(page==='onboard'&&!isA)mc+=(activeOnb?renderOnbItem():renderOnboarding()
 else if(page==='monb'&&isA)mc+=renderMOnb();
 else if(page==='onbproof'&&isA)mc+=renderOnbProof();
 else if(page==='tax'&&isA)mc+=renderTax();
+else if(page==='ccos'&&isA)mc+=renderContractorCos();
 else if(page==='mint'&&isA)mc+=renderInterventions();
 else if(page==='mjp'&&isA)mc+=renderJobProfiles();
 else if(page==='expiry'&&isA)mc+=renderExpiry();
@@ -269,6 +274,7 @@ var onbItems=onboarding.filter(function(o){return onbVisible(o,eid);});
 var onbDone=onbItems.filter(function(o){return onbAcked(eid,o.id);}).length;
 var onbPct=onbItems.length?Math.round(onbDone/onbItems.length*100):100;
 var ic=indCounts(eid);var indOk=indCompetent(eid);var indPct=ic.total?Math.round(ic.done/ic.total*100):(indOk?100:0);
+var coOk=(typeof contractorCleared==='function')?contractorCleared(eid):true;var cleared=indOk&&coOk;
 var ea=getEmpAssigns(eid);var compDone=ea.filter(function(a){return hasPassed(eid,a.sc);}).length;
 var compPct=ea.length?Math.round(compDone/ea.length*100):100;
 var initials=user.name.split(' ').map(function(n){return n[0]}).join('');
@@ -280,7 +286,7 @@ var h='<div class="topbar"><h1>My Compliance Journey</h1></div><div class="pc">'
 h+='<div class="card"><div class="cb"><div class="profile-card"><div class="profile-avatar">'+initials+'</div><div class="profile-info">';
 h+='<h2 style="font-size:1.15rem;font-weight:700;margin-bottom:4px">'+user.name+'</h2>';
 h+='<p style="font-size:.82rem;color:#6B7280"><b>#'+user.id+'</b> · '+user.dept+' · '+user.site+'</p></div>';
-h+='<div style="margin-left:auto;text-align:center">'+(indOk?'<div style="background:#e7f7ec;color:#15803d;border:1px solid #86efac;border-radius:10px;padding:10px 16px;font-weight:700">✅ Cleared for site</div>':'<div style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:10px;padding:9px 15px;font-weight:700">⛔ Not yet cleared<br><span style="font-weight:500;font-size:.74rem">Complete your Mine Induction</span></div>')+'</div>';
+h+='<div style="margin-left:auto;text-align:center">'+(cleared?'<div style="background:#e7f7ec;color:#15803d;border:1px solid #86efac;border-radius:10px;padding:10px 16px;font-weight:700">✅ Cleared for site</div>':'<div style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:10px;padding:9px 15px;font-weight:700">⛔ Not yet cleared<br><span style="font-weight:500;font-size:.74rem">'+(!indOk?'Complete your Mine Induction':'Contractor pack pending approval')+'</span></div>')+'</div>';
 h+='</div></div></div>';
 if(next)h+='<div class="card" style="border-left:4px solid #FBB227"><div class="cb" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Your next step</b><p style="color:#6B7280;font-size:.85rem;margin-top:2px">Pick up where you left off.</p></div><button class="btn btn-p" style="width:auto;padding:11px 26px" onclick="goPage(\''+next.p+'\')">'+next.t+' →</button></div></div>';
 else h+='<div class="card" style="border-left:4px solid #22C55E"><div class="cb"><b style="color:#15803d">🎉 You are fully up to date.</b><p style="color:#6B7280;font-size:.85rem;margin-top:2px">All onboarding, induction and job competency requirements are complete.</p></div></div>';
@@ -1256,3 +1262,42 @@ function sopAcked(eid,sc){ return acks.some(function(a){return a.eid===eid&&a.oi
 function sopAckRec(eid,sc){ return acks.find(function(a){return a.eid===eid&&a.oid==='SOP:'+sc;}); }
 async function acknowledgeSop(sc){ var cb=document.getElementById('sop-ack'); if(!cb||!cb.checked){alert('Please tick the acknowledgement to complete the module.');return;} if(sopAcked(user.id,sc)){render();return;} acks.push({id:gid(),eid:user.id,oid:'SOP:'+sc,at:now()}); var ok=await save(); if(!ok)alert('⚠️ Save may have failed — please check your connection and try again.'); render(); }
 function erToggleCo(v){ var c=decodeURIComponent(v); var i=erCo.indexOf(c); if(i>=0)erCo.splice(i,1); else erCo.push(c); render(); }
+
+// =====================  CONTRACTOR COMPANIES (pack approval gate)  =====================
+function getCo(name){ return contractorCos.find(function(c){return c.name===name;}); }
+function contractorCoApproved(name){ var c=getCo(name); if(!c)return false; if(c.packStatus!=='approved')return false; if(c.expiry){ var t=new Date(); t.setHours(0,0,0,0); if(new Date(c.expiry) < t) return false; } return true; }
+function contractorCleared(eid){ var e=emps.find(function(x){return x.id===eid;}); if(!e||!e.contractor)return true; return contractorCoApproved(e.coName); }
+function coStatusBadge(c){ if(!c)return bg('No pack set','gray'); if(c.packStatus==='approved'){ if(c.expiry){ var t=new Date();t.setHours(0,0,0,0); if(new Date(c.expiry)<t) return bg('Expired','red'); } return bg('Approved','green'); } if(c.packStatus==='rejected')return bg('Rejected','red'); return bg('Pending','gold'); }
+
+function renderContractorCos(){
+  var h='<div class="topbar"><h1>Contractor Companies</h1></div><div class="pc">';
+  h+='<div class="card"><div class="cb"><b>Contractor pack approval.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">One row per contractor company. Upload the company\'s contractor pack (SHE file, mandate, insurance, letter of good standing, audit) and set it to <b>Approved</b> once signed off, with an expiry date. <b>No contractor is cleared for site until their company\'s pack is approved</b> — their people can still do their training in the meantime, but final site clearance is held until the pack is approved. If a pack lapses or is rejected, all of that company\'s people flip back to Not cleared automatically.</p></div></div>';
+  h+='<div class="card"><div class="ch"><h3>Add a contractor company</h3></div><div class="cb" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="flex:2;min-width:200px"><label style="font-size:.76rem;font-weight:600">Company name</label><input id="cco-name" placeholder="e.g. ABC Scaffolding" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><div style="flex:2;min-width:200px"><label style="font-size:.76rem;font-weight:600">Contact (optional)</label><input id="cco-contact" placeholder="Site rep / phone / email" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><button class="btn btn-p" style="width:auto" onclick="addCo()">+ Add</button></div></div>';
+  var names={}; contractorCos.forEach(function(c){names[c.name]=c;});
+  var unreg=[]; emps.forEach(function(e){ if(e.contractor&&e.coName&&!names[e.coName]&&unreg.indexOf(e.coName)<0)unreg.push(e.coName); });
+  h+='<div class="card"><div class="tw"><table><thead><tr><th>Company</th><th>People</th><th>Pack status</th><th>Documents</th><th>Expiry</th><th>Manage</th></tr></thead><tbody>';
+  var rows=contractorCos.slice().sort(function(a,b){return a.name.localeCompare(b.name);});
+  rows.forEach(function(c){
+    var ppl=emps.filter(function(e){return e.contractor&&e.coName===c.name;}).length;
+    var docs=c.packDocs||[];
+    h+='<tr><td style="font-weight:600">'+c.name+(c.contact?'<br><span style="font-size:.72rem;color:#6B7280">'+c.contact+'</span>':'')+'</td>';
+    h+='<td style="font-weight:700">'+ppl+'</td>';
+    h+='<td>'+coStatusBadge(c)+(c.packStatus==='approved'&&c.approvedAt?'<br><span style="font-size:.68rem;color:#6B7280">by '+(c.approvedBy||'admin')+' · '+fd(c.approvedAt)+'</span>':'')+'</td>';
+    h+='<td>'+(docs.length?docs.map(function(d,di){return '<div style="font-size:.74rem"><a href="'+d.url+'" target="_blank" style="color:#FBB227;font-weight:600">'+d.name+'</a> <span style="cursor:pointer;color:#EF4444" onclick="removeCoDoc(\''+c.id+'\','+di+')">✕</span></div>';}).join(''):'<span style="color:#9ca3af;font-size:.76rem">None</span>')+'<button class="btn btn-o btn-sm" style="margin-top:4px" onclick="uploadCoDoc(\''+c.id+'\')">Upload</button></td>';
+    h+='<td><input type="date" id="cco-exp-'+c.id+'" value="'+(c.expiry||'')+'" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.8rem"></td>';
+    h+='<td style="white-space:nowrap"><button class="btn btn-gn btn-sm" onclick="setCoStatus(\''+c.id+'\',\'approved\')">✓ Approve</button> <button class="btn btn-o btn-sm" onclick="setCoStatus(\''+c.id+'\',\'pending\')">Pending</button> <button class="btn btn-o btn-sm" onclick="setCoStatus(\''+c.id+'\',\'rejected\')">Reject</button> <button class="btn btn-d btn-sm" onclick="delCo(\''+c.id+'\')">Delete</button></td></tr>';
+  });
+  unreg.sort().forEach(function(nm){ var ppl=emps.filter(function(e){return e.contractor&&e.coName===nm;}).length;
+    h+='<tr style="background:#fff8ec"><td style="font-weight:600">'+nm+'</td><td style="font-weight:700">'+ppl+'</td><td>'+bg('No pack set','gray')+'</td><td colspan="2" style="font-size:.78rem;color:#6B7280">Has contractors but no pack set up yet.</td><td><button class="btn btn-p btn-sm" onclick="addCoByName(\''+encodeURIComponent(nm)+'\')">+ Set up pack</button></td></tr>';
+  });
+  if(!rows.length&&!unreg.length)h+='<tr><td colspan="6" style="text-align:center;color:#6B7280;padding:20px">No contractor companies yet. Add one above, or add a contractor under Manage Employees.</td></tr>';
+  h+='</tbody></table></div></div></div>';
+  return h;
+}
+function addCo(){ var n=document.getElementById('cco-name').value.trim(); if(!n){alert('Enter a company name.');return;} if(getCo(n)){alert('That company is already in the register.');return;} contractorCos.push({id:gid(),name:n,contact:document.getElementById('cco-contact').value.trim(),packStatus:'pending',packDocs:[],approvedBy:'',approvedAt:'',expiry:'',createdAt:now()}); save(); render(); }
+function addCoByName(v){ var nm=decodeURIComponent(v); if(getCo(nm))return; contractorCos.push({id:gid(),name:nm,contact:'',packStatus:'pending',packDocs:[],approvedBy:'',approvedAt:'',expiry:'',createdAt:now()}); save(); render(); }
+function setCoStatus(id,st){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; var exp=document.getElementById('cco-exp-'+id); if(exp)c.expiry=exp.value||''; if(st==='approved'){ if(!(c.packDocs&&c.packDocs.length)){ if(!confirm('No pack document has been uploaded yet. Approve anyway?'))return; } c.packStatus='approved'; c.approvedBy=(user&&user.name)||'admin'; c.approvedAt=now(); } else { c.packStatus=st; c.approvedAt=''; c.approvedBy=''; } if(typeof logAudit==='function')logAudit('CONTRACTOR PACK '+st.toUpperCase(), c.name, ''); save(); render(); }
+function delCo(id){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; if(!confirm('Remove '+c.name+' from the contractor register? Their people remain, but the pack gate is removed for them.'))return; contractorCos=contractorCos.filter(function(x){return x.id!==id;}); save(); render(); }
+function removeCoDoc(id,di){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; (c.packDocs||[]).splice(di,1); save(); render(); }
+function uploadCoDoc(id){ var inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.doc,.docx,image/*'; inp.onchange=async function(e){ var f=e.target.files[0]; if(!f)return; if(f.size>50*1024*1024){alert('Max 50MB.');return;} var path='contractor-packs/'+id+'_'+Date.now()+'_'+f.name; var r=await sb.storage.from('lms-files').upload(path,f); if(r.error){alert('Upload failed: '+r.error.message);return;} var u=sb.storage.from('lms-files').getPublicUrl(path); var c=contractorCos.find(function(x){return x.id===id;}); c.packDocs=c.packDocs||[]; c.packDocs.push({url:u.data.publicUrl,name:f.name}); await save(); render(); alert('Pack document uploaded.'); }; inp.click(); }
+
