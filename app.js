@@ -3,6 +3,7 @@ function gid(){return Math.random().toString(36).substr(2,9)}
 function now(){return new Date().toISOString()}
 function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
+var onboarding=[], acks=[], activeOnb=null;
 function cleanStr(s){return(s||'').replace(/[^\x20-\x7E]/g,'').trim()}
 
 // Data variables (loaded from Supabase on init)
@@ -100,6 +101,7 @@ async function save() {
         // Remove any assignments that admin explicitly deleted this session
         if(removedAssigns.length){assigns=assigns.filter(function(a){return removedAssigns.indexOf(a.eid+'||'+a.sc)<0});}
         notifs = mergeById(cloudNotifs, notifs);
+        try{ acks = mergeById(await cloudLoad('acks', []), acks); }catch(e){}
         unlockLog = mergeById(cloudUnlock, unlockLog);
 
         // For emps and sops — admin is sole editor, use local version
@@ -121,7 +123,9 @@ async function save() {
         cloudSave('sites', sites),
         cloudSave('emps', emps),
         cloudSave('assigns', assigns),
-        cloudSave('unlock', unlockLog)
+        cloudSave('unlock', unlockLog),
+        cloudSave('onboarding', onboarding),
+        cloudSave('acks', acks)
     ]);
     var failed = results.filter(function(r){ return !r; }).length;
     if (failed > 0) { console.error(failed + ' save(s) failed'); return false; }
@@ -153,6 +157,8 @@ async function init() {
         unlockLog = await cloudLoad('unlock', []);
         sops = await cloudLoad('sops', []);
         adminPass = await cloudLoad('admin_password', 'admin');
+        onboarding = await cloudLoad('onboarding', []);
+        acks = await cloudLoad('acks', []);
         await tnaLoad();
         await indLoad();
         render();
@@ -176,13 +182,20 @@ if(user.role==='manager'||user.role==='training'){el.innerHTML=renderManagerShel
 var isA=user.role==='admin';
 var sb='<aside class="sb"><div class="sb-brand"><div class="sb-logo"><img src="'+BRAND.logo+'" alt=""></div><h2>'+BRAND.name+'</h2><p>'+BRAND.tagline+'</p></div><div class="sb-nav">';
 sb+='<div class="ni'+(page==='dashboard'&&!activeSop?' a':'')+'" onclick="goPage(\'dashboard\')">📊 Dashboard</div>';
-sb+='<div class="ni'+(page==='library'||activeSop?' a':'')+'" onclick="goPage(\'library\')">📚 My Training</div>';
-if(!isA)sb+='<div class="ni'+(page==='myres'?' a':'')+'" onclick="goPage(\'myres\')">📋 My Results</div>';
-if(!isA)sb+='<div class="ni'+(page==='mycomp'?' a':'')+'" onclick="goPage(\'mycomp\')">🎯 My Competence</div>';
-if(!isA)sb+='<div class="ni'+(page==='myind'?' a':'')+'" onclick="goPage(\'myind\')">🎓 Induction</div>';
+if(isA)sb+='<div class="ni'+(page==='library'||activeSop?' a':'')+'" onclick="goPage(\'library\')">📚 Training Library</div>';
+if(!isA){
+sb+='<div class="sb-sec">MY JOURNEY</div>';
+var _onbOut=onbOutstanding(user.id);
+sb+='<div class="ni'+(page==='onboard'?' a':'')+'" onclick="goPage(\'onboard\')">🤝 Onboarding'+(_onbOut?' '+bg(_onbOut,'gold'):'')+'</div>';
+sb+='<div class="ni'+(page==='myind'?' a':'')+'" onclick="goPage(\'myind\')">⛑️ Mine Induction</div>';
+sb+='<div class="ni'+((page==='library'||activeSop)?' a':'')+'" onclick="goPage(\'library\')">'+(indCompetent(user.id)?'🎯':'🔒')+' My Competency</div>';
+sb+='<div class="sb-sec">MY RECORDS</div>';
+sb+='<div class="ni'+(page==='myres'?' a':'')+'" onclick="goPage(\'myres\')">📋 Training Records</div>';
+}
 if(isA){
 sb+='<div class="sb-sec">SET UP</div>';
 sb+='<div class="ni'+(page==='mind'?' a':'')+'" onclick="goPage(\'mind\')">🎓 Manage Induction</div>';
+sb+='<div class="ni'+(page==='monb'?' a':'')+'" onclick="goPage(\'monb\')">🤝 Manage Onboarding</div>';
 sb+='<div class="ni'+(page==='mint'?' a':'')+'" onclick="goPage(\'mint\')">🧩 Interventions</div>';
 sb+='<div class="ni'+(page==='mjp'?' a':'')+'" onclick="goPage(\'mjp\')">🏷️ Job Profiles</div>';
 sb+='<div class="ni'+(page==='msops'?' a':'')+'" onclick="goPage(\'msops\')">⚙️ Manage Training Content</div>';
@@ -219,6 +232,8 @@ else if(page==='comp'&&isA)mc+=renderCompetence();
 else if(page==='iassign'&&isA)mc+=renderIAssign();
 else if(page==='mind'&&isA)mc+=renderManageInduction();
 else if(page==='myind'&&!isA)mc+=renderMyInduction();
+else if(page==='onboard'&&!isA)mc+=(activeOnb?renderOnbItem():renderOnboarding());
+else if(page==='monb'&&isA)mc+=renderMOnb();
 else if(page==='mint'&&isA)mc+=renderInterventions();
 else if(page==='mjp'&&isA)mc+=renderJobProfiles();
 else if(page==='expiry'&&isA)mc+=renderExpiry();
@@ -243,45 +258,41 @@ return'<div class="login-bg"><div class="login-card"><div class="login-logo"><im
 
 // === EMPLOYEE DASHBOARD ===
 function renderEmpDash(){
-var ea=getEmpAssigns(user.id);
-var completed=0,outstanding=0;
-ea.forEach(function(a){if(hasPassed(user.id,a.sc))completed++;else outstanding++});
-var pct=ea.length?Math.round(completed/ea.length*100):0;
+var eid=user.id;
+var onbItems=onboarding.filter(function(o){return onbVisible(o,eid);});
+var onbDone=onbItems.filter(function(o){return onbAcked(eid,o.id);}).length;
+var onbPct=onbItems.length?Math.round(onbDone/onbItems.length*100):100;
+var ic=indCounts(eid);var indOk=indCompetent(eid);var indPct=ic.total?Math.round(ic.done/ic.total*100):(indOk?100:0);
+var ea=getEmpAssigns(eid);var compDone=ea.filter(function(a){return hasPassed(eid,a.sc);}).length;
+var compPct=ea.length?Math.round(compDone/ea.length*100):100;
 var initials=user.name.split(' ').map(function(n){return n[0]}).join('');
-var h='<div class="topbar"><h1>My Dashboard</h1></div><div class="pc">';
-// Profile
+var next=null;
+if(onbItems.length&&onbDone<onbItems.length)next={t:'Continue Onboarding',p:'onboard'};
+else if(!indOk)next={t:'Continue Mine Induction',p:'myind'};
+else if(ea.length&&compDone<ea.length)next={t:'Continue My Competency',p:'library'};
+var h='<div class="topbar"><h1>My Compliance Journey</h1></div><div class="pc">';
 h+='<div class="card"><div class="cb"><div class="profile-card"><div class="profile-avatar">'+initials+'</div><div class="profile-info">';
-h+='<h2 style="font-size:1.2rem;font-weight:700;margin-bottom:6px">'+user.name+'</h2>';
-h+='<p><b>Employee #:</b> '+user.id+'</p><p><b>ID Number:</b> '+user.idn+'</p>';
-h+='<p><b>Gender:</b> '+user.gender+'</p><p><b>Department:</b> '+user.dept+'</p><p><b>Site:</b> '+user.site+'</p>';
-h+='</div></div></div></div>';
-// Stats
-h+='<div class="sg"><div class="sc gd"><div class="l">Assigned Courses</div><div class="v">'+ea.length+'</div></div>';
-h+='<div class="sc gn"><div class="l">Completed</div><div class="v">'+completed+'</div></div>';
-h+='<div class="sc rd"><div class="l">Outstanding</div><div class="v">'+outstanding+'</div></div>';
-h+='<div class="sc bl"><div class="l">Progress</div><div class="v">'+pct+'%</div><div class="pb" style="margin-top:6px"><div class="pf '+(pct>=80?'gn':'gd')+'" style="width:'+pct+'%"></div></div></div></div>';
-// Training table
-h+='<div class="card"><div class="ch"><h3>My Assigned Training</h3></div><div class="cb">';
-if(!ea.length)h+='<p style="text-align:center;color:#6B7280;padding:20px">No training assigned yet. Contact your administrator.</p>';
-else{h+='<div class="tw"><table><thead><tr><th>#</th><th>SOP Code</th><th>Title</th><th>Status</th><th>Score</th><th>Attempts</th><th>Date</th><th>Action</th></tr></thead><tbody>';
-ea.forEach(function(a,i){
-var sop=sops.find(function(s){return s.code===a.sc});
-var st=getStatus(user.id,a.sc);
-var att=getAtt(user.id,a.sc);
-var passR=att.find(function(r){return r.pass});
-var lastR=att.length?att[att.length-1]:null;
-var ca=canAccess(user.id,a.sc);
-var stBg=st==='passed'?bg('Completed','green'):st==='locked'?bg('Locked','red'):st==='progress'?bg('In Progress','gold'):!ca?bg('🔒 Locked','gray'):bg('Not Started','gray');
-var scoreStr=passR?passR.pct+'%':lastR?lastR.pct+'%':'-';
-var dateStr=passR?fd(passR.dt):'-';
-var actionStr='';
-if(st==='passed')actionStr='<button class="btn btn-gn btn-sm" onclick="dlProofEmp(\''+user.id+'\',\''+a.sc+'\')">📥 Proof</button>';
-else if(st==='locked')actionStr='<span style="font-size:.78rem;color:#EF4444">Contact admin</span>';
-else if(!ca)actionStr='<span style="font-size:.78rem;color:#6B7280">Complete previous first</span>';
-else actionStr='<button class="btn btn-p btn-sm" onclick="openSop(\''+sop.id+'\')">Start</button>';
-h+='<tr><td>'+(i+1)+'</td><td style="font-weight:700;color:#FBB227">'+a.sc+'</td><td>'+(sop?sop.title:'')+'</td><td>'+stBg+'</td><td style="font-weight:700">'+scoreStr+'</td><td>'+att.length+'/3</td><td>'+dateStr+'</td><td>'+actionStr+'</td></tr>';
-});h+='</tbody></table></div>';}
-h+='</div></div></div>';return h;
+h+='<h2 style="font-size:1.15rem;font-weight:700;margin-bottom:4px">'+user.name+'</h2>';
+h+='<p style="font-size:.82rem;color:#6B7280"><b>#'+user.id+'</b> · '+user.dept+' · '+user.site+'</p></div>';
+h+='<div style="margin-left:auto;text-align:center">'+(indOk?'<div style="background:#e7f7ec;color:#15803d;border:1px solid #86efac;border-radius:10px;padding:10px 16px;font-weight:700">✅ Cleared for site</div>':'<div style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:10px;padding:9px 15px;font-weight:700">⛔ Not yet cleared<br><span style="font-weight:500;font-size:.74rem">Complete your Mine Induction</span></div>')+'</div>';
+h+='</div></div></div>';
+if(next)h+='<div class="card" style="border-left:4px solid #FBB227"><div class="cb" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Your next step</b><p style="color:#6B7280;font-size:.85rem;margin-top:2px">Pick up where you left off.</p></div><button class="btn btn-p" style="width:auto;padding:11px 26px" onclick="goPage(\''+next.p+'\')">'+next.t+' →</button></div></div>';
+else h+='<div class="card" style="border-left:4px solid #22C55E"><div class="cb"><b style="color:#15803d">🎉 You are fully up to date.</b><p style="color:#6B7280;font-size:.85rem;margin-top:2px">All onboarding, induction and job competency requirements are complete.</p></div></div>';
+h+='<div class="sg" style="grid-template-columns:repeat(3,1fr)">';
+h+=journeyCard('🤝 Onboarding','Company & HR policies',onbPct,onbDone,onbItems.length,'onboard',false);
+h+=journeyCard('⛑️ Mine Induction','Cleared for site',indPct,ic.done,ic.total,'myind',false);
+h+=journeyCard('🎯 My Competency','Job training',compPct,compDone,ea.length,'library',!indOk);
+h+='</div></div>';return h;
+}
+function journeyCard(title,sub,pct,done,total,pg,locked){
+var col=pct>=100?'gn':'gd';
+var h='<div class="card" style="cursor:'+(locked?'default':'pointer')+'" '+(locked?'':'onclick="goPage(\''+pg+'\')"')+'><div class="cb">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:.95rem">'+title+'</b><span style="font-size:1.1rem">'+(locked?'🔒':(pct>=100?'✅':'▶'))+'</span></div>';
+h+='<p style="font-size:.76rem;color:#6B7280;margin:2px 0 10px">'+sub+'</p>';
+if(locked)h+='<p style="font-size:.8rem;color:#b45309">Unlocks after induction</p>';
+else{h+='<div class="pb"><div class="pf '+col+'" style="width:'+pct+'%"></div></div>';
+h+='<p style="font-size:.78rem;color:#6B7280;margin-top:6px">'+(total?done+' of '+total+' done · '+pct+'%':'Nothing assigned yet')+'</p>';}
+h+='</div></div>';return h;
 }
 
 // === ADMIN DASHBOARD ===
@@ -339,7 +350,8 @@ h+='</div>';return h;
 // === EMPLOYEE LIBRARY ===
 function renderLib(){
 var isA=user.role==='admin';
-var h='<div class="topbar"><h1>'+(isA?'Training Library':'My Training')+'</h1></div><div class="pc">';
+if(!isA && !indCompetent(user.id)) return '<div class="topbar"><h1>My Competency</h1></div><div class="pc"><div class="card"><div class="cb" style="text-align:center;padding:34px"><div style="font-size:2.2rem">🔒</div><h2 style="margin:8px 0">Complete your Mine Induction first</h2><p style="color:#6B7280;max-width:520px;margin:0 auto 16px">Your job-specific training unlocks once your Mine Induction is complete. This is a legal requirement — no person may perform work on the mine until induction is done.</p><button class="btn btn-p" style="width:auto;padding:11px 30px" onclick="goPage(\'myind\')">Go to Mine Induction</button></div></div></div>';
+var h='<div class="topbar"><h1>'+(isA?'Training Library':'My Competency')+'</h1></div><div class="pc">';
 var ea=isA?null:getEmpAssigns(user.id);
 var showSops=isA?sops:sops.filter(function(s){return ea.some(function(a){return a.sc===s.code})});
 if(!isA&&!showSops.length)return h+'<div class="card"><div class="cb"><p style="text-align:center;color:#6B7280;padding:24px">No training assigned yet. Contact your administrator.</p></div></div></div>';
@@ -628,7 +640,7 @@ if(!emp){document.getElementById('login-err').textContent='Employee not found';r
 if(pin!==emp.pin){document.getElementById('login-err').textContent='Incorrect PIN';return}
 user=emp;page='dashboard';render();}
 function doLogout(){user=null;page='login';activeSop=null;render()}
-function goPage(p){page=p;activeSop=null;assessStarted=false;assessDone=false;assessResult=null;assessAns={};assessQs=[];if(typeof compEmp!=='undefined'){compEmp=null;jpEdit=null;}if(typeof indActiveMod!=='undefined'){indActiveMod=null;indAdminEdit=null;indResult=null;indAns={};}render()}
+function goPage(p){page=p;activeSop=null;activeOnb=null;assessStarted=false;assessDone=false;assessResult=null;assessAns={};assessQs=[];if(typeof compEmp!=='undefined'){compEmp=null;jpEdit=null;}if(typeof indActiveMod!=='undefined'){indActiveMod=null;indAdminEdit=null;indResult=null;indAns={};}render()}
 function openSop(id){activeSop=sops.find(function(s){return s.id===id});assessStarted=false;assessDone=false;assessResult=null;assessAns={};assessQs=[];render()}
 function closeSop(){activeSop=null;render()}
 function setSopTab(t){var el=document.getElementById('sop-tab-val');if(el)el.value=t;render()}
@@ -911,3 +923,106 @@ w.document.close();setTimeout(function(){w.print()},500);}
 
 // One Mining Training Demo — TNA/Competence build
 init();
+
+// =====================  ONBOARDING (employee journey + admin)  =====================
+var ONB_ACK_TEXT='I confirm that I have been given the means to read this document, that I understand its contents, and that it is my responsibility to ensure I fully understand and comply with it. I understand I may raise any questions with HR or my line manager.';
+var onbEditId=null;
+
+function empGroup(eid){ var t=(typeof empJobTitle==='function')?empJobTitle(eid):''; var p=(t&&typeof getProfile==='function')?getProfile(t):null; return p?(p.group||''):''; }
+function jobGroups(){ var g=[]; if(typeof jobprofiles!=='undefined'){ jobprofiles.forEach(function(p){ if(p.group&&g.indexOf(p.group)<0)g.push(p.group); }); } return g; }
+function onbVisible(o,eid){ if(!o||o.active===false)return false; if(!o.audience||o.audience==='all')return true; if(o.audience==='groups'){ return (o.groups||[]).indexOf(empGroup(eid))>=0; } return true; }
+function onbAcked(eid,oid){ return acks.some(function(a){return a.eid===eid&&a.oid===oid;}); }
+function onbAckRec(eid,oid){ return acks.find(function(a){return a.eid===eid&&a.oid===oid;}); }
+function onbOutstanding(eid){ return onboarding.filter(function(o){return onbVisible(o,eid)&&!onbAcked(eid,o.id);}).length; }
+function openOnb(id){ activeOnb=onboarding.find(function(o){return o.id===id;}); render(); }
+function closeOnb(){ activeOnb=null; render(); }
+
+function renderOnboarding(){
+var eid=user.id;
+var items=onboarding.filter(function(o){return onbVisible(o,eid);}).sort(function(a,b){return (a.order||0)-(b.order||0);});
+var done=items.filter(function(o){return onbAcked(eid,o.id);}).length;
+var pct=items.length?Math.round(done/items.length*100):0;
+var h='<div class="topbar"><h1>Onboarding</h1><span style="font-size:.78rem;color:#6B7280">'+done+' of '+items.length+' acknowledged</span></div><div class="pc">';
+h+='<div class="card"><div class="cb"><b>Welcome to '+BRAND.name+'</b><p style="margin-top:6px;color:#374151;line-height:1.6">These are the company and HR policies that apply to you. Please open each one, read it, watch the short video where one is provided, and then sign the acknowledgement to confirm you have received and understood it. If anything is unclear, speak to <b>HR</b> or your <b>line manager</b>.</p>';
+h+='<div class="pb" style="margin-top:10px"><div class="pf '+(pct>=100?'gn':'gd')+'" style="width:'+pct+'%"></div></div></div></div>';
+if(!items.length)return h+'<div class="card"><div class="cb" style="text-align:center;color:#6B7280;padding:24px">No onboarding items for you yet. Your administrator will add these.</div></div></div>';
+h+='<div class="card"><div class="tw"><table><thead><tr><th>#</th><th>Policy / Document</th><th>Status</th><th>Acknowledged</th><th>Action</th></tr></thead><tbody>';
+items.forEach(function(o,i){
+var ok=onbAcked(eid,o.id);var rec=onbAckRec(eid,o.id);
+h+='<tr><td>'+(i+1)+'</td><td style="font-weight:600">'+o.title+(o.desc?'<br><span style="font-size:.76rem;color:#6B7280;font-weight:400">'+o.desc+'</span>':'')+'</td>';
+h+='<td>'+(ok?bg('✓ Acknowledged','green'):bg('Outstanding','gold'))+'</td>';
+h+='<td style="font-size:.8rem">'+(ok?fd(rec.at):'-')+'</td>';
+h+='<td><button class="btn '+(ok?'btn-o':'btn-p')+' btn-sm" onclick="openOnb(\''+o.id+'\')">'+(ok?'Review':'Open')+'</button></td></tr>';
+});
+h+='</tbody></table></div></div></div>';return h;
+}
+
+function renderOnbItem(){
+var o=activeOnb,eid=user.id,ok=onbAcked(eid,o.id),rec=onbAckRec(eid,o.id);
+var h='<div class="topbar"><div style="display:flex;align-items:center;gap:14px"><button class="btn btn-o btn-sm" onclick="closeOnb()">← Back</button><div><h1>'+o.title+'</h1><span style="font-size:.76rem;color:#6B7280">Onboarding · Company &amp; HR</span></div></div></div><div class="pc">';
+if(o.desc)h+='<div class="card"><div class="cb" style="color:#374151">'+o.desc+'</div></div>';
+h+='<div class="card"><div class="ch"><h3>Document</h3></div><div class="cb">';
+if(o.docUrl)h+='<iframe src="'+o.docUrl+'" style="width:100%;height:70vh;border:1px solid #e5e7eb;border-radius:10px"></iframe><p style="margin-top:8px;font-size:.8rem"><a href="'+o.docUrl+'" target="_blank" style="color:#FBB227;font-weight:600">Open in new tab</a></p>';
+else h+='<p style="color:#6B7280;text-align:center;padding:20px">The document will be available here shortly.</p>';
+h+='</div></div>';
+if(o.vidUrl){h+='<div class="card"><div class="ch"><h3>Explainer video</h3></div><div class="cb"><div style="background:#000;border-radius:10px;overflow:hidden"><video controls playsinline style="width:100%;display:block" src="'+o.vidUrl+'"></video></div></div></div>';}
+h+='<div class="card" style="border-left:4px solid #FBB227"><div class="ch"><h3>Acknowledgement</h3></div><div class="cb">';
+if(ok){h+='<p style="color:#15803d;font-weight:600">✓ You acknowledged this on '+fd(rec.at)+'.</p><p style="color:#6B7280;font-size:.85rem;margin-top:6px">'+ONB_ACK_TEXT+'</p>';}
+else{h+='<label style="display:flex;gap:10px;align-items:flex-start;font-size:.92rem"><input type="checkbox" id="onb-ack" style="margin-top:3px;width:18px;height:18px"> <span>'+ONB_ACK_TEXT+'</span></label>';
+h+='<div style="margin-top:14px"><button class="btn btn-p" style="width:auto;padding:12px 40px" onclick="acknowledgeOnb(\''+o.id+'\')">Acknowledge &amp; Accept Responsibility</button></div>';
+h+='<p style="margin-top:10px;font-size:.8rem;color:#6B7280">Questions? Contact <b>HR</b> or your <b>line manager</b>.</p>';}
+h+='</div></div></div>';return h;
+}
+
+async function acknowledgeOnb(oid){
+var cb=document.getElementById('onb-ack');if(!cb||!cb.checked){alert('Please tick the acknowledgement to confirm.');return;}
+if(onbAcked(user.id,oid)){render();return;}
+acks.push({id:gid(),eid:user.id,oid:oid,at:now()});
+var ok=await save();if(!ok)alert('⚠️ Save may have failed — please check your connection and try again.');
+if(typeof logAudit==='function')logAudit('ONBOARDING ACK',user.id,oid);
+render();
+}
+
+// ---------- ADMIN: Manage Onboarding ----------
+function onbAudienceLabel(o){ if(!o.audience||o.audience==='all')return bg('Everyone','blue'); var gs=o.groups||[]; return gs.length?gs.map(function(g){return bg(g,'gray');}).join(' '):bg('No group set','red'); }
+function renderMOnb(){
+var items=onboarding.slice().sort(function(a,b){return (a.order||0)-(b.order||0);});
+var grps=jobGroups();
+var h='<div class="topbar"><h1>Manage Onboarding</h1></div><div class="pc">';
+h+='<div class="card"><div class="cb"><b>Company &amp; HR onboarding pack.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">These policies appear in the Onboarding stage of every employee\'s journey. Add an item, upload its document (PDF) and optional video, choose who it applies to, then switch it on. Employees read each one and sign an acknowledgement — captured with a date as your proof.</p></div></div>';
+h+='<div class="card"><div class="ch"><h3>Add a policy / document</h3></div><div class="cb" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">';
+h+='<div style="flex:2;min-width:220px"><label style="font-size:.78rem;font-weight:600">Title</label><input id="onb-title" placeholder="e.g. Disciplinary Code &amp; Procedure" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div>';
+h+='<div style="flex:3;min-width:240px"><label style="font-size:.78rem;font-weight:600">Short description (optional)</label><input id="onb-desc" placeholder="One line explaining what this covers" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div>';
+h+='<button class="btn btn-p" style="width:auto" onclick="addOnb()">+ Add</button></div></div>';
+if(!items.length){h+='<div class="card"><div class="cb" style="text-align:center;color:#6B7280;padding:24px">No onboarding items yet. Add your first above.</div></div></div>';return h;}
+h+='<div class="card"><div class="tw"><table><thead><tr><th>Order</th><th>Title</th><th>Applies to</th><th>Document</th><th>Video</th><th>Status</th><th>Manage</th></tr></thead><tbody>';
+items.forEach(function(o,i){
+if(onbEditId===o.id){
+h+='<tr><td colspan="7" style="background:#fff8ec"><div style="padding:6px 2px"><b>Edit item</b><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;align-items:flex-start">';
+h+='<div style="flex:2;min-width:200px"><label style="font-size:.74rem;font-weight:600">Title</label><input id="oe-title" value="'+(o.title||'').replace(/"/g,'&quot;')+'" style="width:100%;padding:8px 10px;border:2px solid #e2e5e9;border-radius:8px"></div>';
+h+='<div style="flex:3;min-width:240px"><label style="font-size:.74rem;font-weight:600">Description</label><input id="oe-desc" value="'+(o.desc||'').replace(/"/g,'&quot;')+'" style="width:100%;padding:8px 10px;border:2px solid #e2e5e9;border-radius:8px"></div>';
+h+='<div style="flex:2;min-width:220px"><label style="font-size:.74rem;font-weight:600">Applies to</label><div style="margin-top:4px"><label style="font-size:.85rem;font-weight:600"><input type="checkbox" id="oe-all" '+((!o.audience||o.audience==='all')?'checked':'')+'> Everyone</label><div style="margin-top:5px">';
+if(!grps.length)h+='<span style="font-size:.75rem;color:#6B7280">Tick Everyone (no Job-Profile groups defined yet). Add groups under Job Profiles to target specific levels.</span>';
+else{h+='<span style="font-size:.72rem;color:#6B7280">…or untick Everyone and choose groups:</span><br>';grps.forEach(function(g){h+='<label style="display:inline-flex;gap:5px;align-items:center;margin:3px 10px 3px 0;font-size:.82rem"><input type="checkbox" class="oe-grp" value="'+g.replace(/"/g,'&quot;')+'" '+((o.audience==='groups'&&(o.groups||[]).indexOf(g)>=0)?'checked':'')+'> '+g+'</label>';});}
+h+='</div></div></div>';
+h+='<div style="display:flex;gap:8px;align-items:flex-end;padding-top:16px"><button class="btn btn-p btn-sm" style="width:auto" onclick="saveOnbEdit(\''+o.id+'\')">Save</button><button class="btn btn-o btn-sm" style="width:auto" onclick="onbEditId=null;render()">Cancel</button></div>';
+h+='</div></div></td></tr>';
+}else{
+h+='<tr><td style="white-space:nowrap"><button class="btn btn-o btn-sm" onclick="moveOnb(\''+o.id+'\',-1)">↑</button> <button class="btn btn-o btn-sm" onclick="moveOnb(\''+o.id+'\',1)">↓</button></td>';
+h+='<td style="font-weight:600">'+o.title+(o.desc?'<br><span style="font-size:.76rem;color:#6B7280;font-weight:400">'+o.desc+'</span>':'')+'</td>';
+h+='<td style="font-size:.76rem">'+onbAudienceLabel(o)+'</td>';
+h+='<td>'+(o.docUrl?bg('✓ PDF','green'):bg('None','gray'))+'<br><button class="btn btn-o btn-sm" style="margin-top:4px" onclick="uploadOnbDoc(\''+o.id+'\')">Upload</button></td>';
+h+='<td>'+(o.vidUrl?bg('✓ Video','green'):bg('None','gray'))+'<br><button class="btn btn-o btn-sm" style="margin-top:4px" onclick="uploadOnbVid(\''+o.id+'\')">Upload</button></td>';
+h+='<td>'+(o.active!==false?bg('Active','green'):bg('Off','gray'))+'<br><button class="btn btn-o btn-sm" style="margin-top:4px" onclick="toggleOnb(\''+o.id+'\')">'+(o.active!==false?'Turn off':'Turn on')+'</button></td>';
+h+='<td style="white-space:nowrap"><button class="btn btn-o btn-sm" onclick="onbEditId=\''+o.id+'\';render()">✎ Edit</button> <button class="btn btn-d btn-sm" onclick="delOnb(\''+o.id+'\')">Delete</button></td></tr>';
+}
+});
+h+='</tbody></table></div></div></div>';return h;
+}
+function addOnb(){var t=document.getElementById('onb-title').value.trim();if(!t){alert('Please enter a title.');return;}var d=document.getElementById('onb-desc').value.trim();var maxO=onboarding.reduce(function(m,o){return Math.max(m,o.order||0);},0);onboarding.push({id:gid(),title:t,desc:d,docUrl:'',docName:'',vidUrl:'',vidName:'',order:maxO+1,active:true,audience:'all',groups:[],createdAt:now()});document.getElementById('onb-title').value='';document.getElementById('onb-desc').value='';save();render();}
+function saveOnbEdit(id){var o=onboarding.find(function(x){return x.id===id;});if(!o)return;o.title=document.getElementById('oe-title').value.trim()||o.title;o.desc=document.getElementById('oe-desc').value.trim();var all=document.getElementById('oe-all');if(all&&!all.checked){var gs=[];document.querySelectorAll('.oe-grp').forEach(function(c){if(c.checked)gs.push(c.value);});o.audience='groups';o.groups=gs;}else{o.audience='all';o.groups=[];}onbEditId=null;save();render();}
+function toggleOnb(id){var o=onboarding.find(function(x){return x.id===id;});if(!o)return;o.active=(o.active===false);save();render();}
+function delOnb(id){if(!confirm('Delete this onboarding item? Employee acknowledgements already captured for it stay in the records.'))return;onboarding=onboarding.filter(function(x){return x.id!==id;});save();render();}
+function moveOnb(id,dir){var items=onboarding.slice().sort(function(a,b){return (a.order||0)-(b.order||0);});var i=items.findIndex(function(x){return x.id===id;});var j=i+dir;if(j<0||j>=items.length)return;var a=items[i],b=items[j];var ao=(a.order||0),bo=(b.order||0);a.order=bo;b.order=ao;save();render();}
+function uploadOnbDoc(id){var inp=document.createElement('input');inp.type='file';inp.accept='.pdf';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;if(f.size>50*1024*1024){alert('Max 50MB. Please compress or split the PDF.');return;}var path='onboarding/'+id+'_'+Date.now()+'_'+f.name;var r=await sb.storage.from('lms-files').upload(path,f);if(r.error){alert('Upload failed: '+r.error.message);return;}var u=sb.storage.from('lms-files').getPublicUrl(path);var o=onboarding.find(function(x){return x.id===id;});o.docUrl=u.data.publicUrl;o.docName=f.name;await save();render();alert('Document uploaded.');};inp.click();}
+function uploadOnbVid(id){var inp=document.createElement('input');inp.type='file';inp.accept='video/*';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;if(f.size>100*1024*1024){alert('Max 100MB. For larger videos, upload to YouTube and paste the link.');return;}var path='onboarding-vid/'+id+'_'+Date.now()+'_'+f.name;var r=await sb.storage.from('lms-files').upload(path,f);if(r.error){alert('Upload failed: '+r.error.message);return;}var u=sb.storage.from('lms-files').getPublicUrl(path);var o=onboarding.find(function(x){return x.id===id;});o.vidUrl=u.data.publicUrl;o.vidName=f.name;await save();render();alert('Video uploaded.');};inp.click();}
