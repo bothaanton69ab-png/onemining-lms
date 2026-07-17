@@ -688,6 +688,8 @@ function expiryRows(){
       var it=getIntervention(r.code);
       rows.push({eid:e.id, name:e.name, site:e.site, dept:e.dept, job:empJobTitle(e.id), code:r.code, iname:it?it.name:'', days:s.days, validUntil:s.validUntil, status:s.status});
     });
+    // Medical Certificate of Fitness — flag when expiring within 60 days or already expired
+    if(e.medStatus==='fit' && e.medExpiry){ var _t=new Date();_t.setHours(0,0,0,0); var _dd=Math.round((new Date(e.medExpiry)-_t)/86400000); if(_dd<=60){ rows.push({eid:e.id, name:e.name, site:e.site, dept:e.dept, job:empJobTitle(e.id), code:'MEDICAL', iname:'Certificate of Fitness', days:_dd, validUntil:e.medExpiry, status:_dd<0?'expired':'expiring'}); } }
   });
   return rows.sort(function(a,b){ function k(r){return r.status==='failed'?-1000:(r.days==null?9999:r.days);} return k(a)-k(b); });
 }

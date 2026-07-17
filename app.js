@@ -4,6 +4,7 @@ function now(){return new Date().toISOString()}
 function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
 var onboarding=[], acks=[], activeOnb=null, libSearch='', libCat='', libProg='', contractorCos=[];
+var medSites=[], medDepts=[], medSearch='', medType='all', medCo=[];
 var asgnJobMode='individual', asgnJobEid='', asgnJobSite='', asgnJobDept='';
 var contentEditId=null, contentSearch='';
 function cleanStr(s){return(s||'').replace(/[^\x20-\x7E]/g,'').trim()}
@@ -215,6 +216,7 @@ sb+='<div class="ni'+(page==='memps'?' a':'')+'" onclick="goPage(\'memps\')">�
 sb+='<div class="ni'+(page==='emprec'?' a':'')+'" onclick="goPage(\'emprec\')">👥 Training Records</div>';
 sb+='<div class="ni'+(page==='mmgr'?' a':'')+'" onclick="goPage(\'mmgr\')">👔 Manager Accounts</div>';
 sb+='<div class="ni'+(page==='ccos'?' a':'')+'" onclick="goPage(\'ccos\')">🏗️ Contractor Companies</div>';
+sb+='<div class="ni'+(page==='medical'?' a':'')+'" onclick="goPage(\'medical\')">🩺 Medical Fitness</div>';
 sb+='<div class="sb-sec">MONITOR & COMPLIANCE</div>';
 sb+='<div class="ni'+(page==='comp'?' a':'')+'" onclick="goPage(\'comp\')">🎯 Competence</div>';
 sb+='<div class="ni'+(page==='expiry'?' a':'')+'" onclick="goPage(\'expiry\')">⏰ Expiry & Renewals</div>';
@@ -245,6 +247,7 @@ else if(page==='monb'&&isA)mc+=renderMOnb();
 else if(page==='onbproof'&&isA)mc+=renderOnbProof();
 else if(page==='tax'&&isA)mc+=renderTax();
 else if(page==='ccos'&&isA)mc+=renderContractorCos();
+else if(page==='medical'&&isA)mc+=renderMedical();
 else if(page==='mint'&&isA)mc+=renderInterventions();
 else if(page==='mjp'&&isA)mc+=renderJobProfiles();
 else if(page==='expiry'&&isA)mc+=renderExpiry();
@@ -274,7 +277,7 @@ var onbItems=onboarding.filter(function(o){return onbVisible(o,eid);});
 var onbDone=onbItems.filter(function(o){return onbAcked(eid,o.id);}).length;
 var onbPct=onbItems.length?Math.round(onbDone/onbItems.length*100):100;
 var ic=indCounts(eid);var indOk=indCompetent(eid);var indPct=ic.total?Math.round(ic.done/ic.total*100):(indOk?100:0);
-var coOk=(typeof contractorCleared==='function')?contractorCleared(eid):true;var cleared=indOk&&coOk;
+var coOk=(typeof contractorCleared==='function')?contractorCleared(eid):true;var medOk=(typeof medValid==='function')?medValid(eid):true;var cleared=indOk&&medOk&&coOk;
 var ea=getEmpAssigns(eid);var compDone=ea.filter(function(a){return hasPassed(eid,a.sc);}).length;
 var compPct=ea.length?Math.round(compDone/ea.length*100):100;
 var initials=user.name.split(' ').map(function(n){return n[0]}).join('');
@@ -286,8 +289,9 @@ var h='<div class="topbar"><h1>My Compliance Journey</h1></div><div class="pc">'
 h+='<div class="card"><div class="cb"><div class="profile-card"><div class="profile-avatar">'+initials+'</div><div class="profile-info">';
 h+='<h2 style="font-size:1.15rem;font-weight:700;margin-bottom:4px">'+user.name+'</h2>';
 h+='<p style="font-size:.82rem;color:#6B7280"><b>#'+user.id+'</b> · '+user.dept+' · '+user.site+'</p></div>';
-h+='<div style="margin-left:auto;text-align:center">'+(cleared?'<div style="background:#e7f7ec;color:#15803d;border:1px solid #86efac;border-radius:10px;padding:10px 16px;font-weight:700">✅ Cleared for site</div>':'<div style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:10px;padding:9px 15px;font-weight:700">⛔ Not yet cleared<br><span style="font-weight:500;font-size:.74rem">'+(!indOk?'Complete your Mine Induction':'Contractor pack pending approval')+'</span></div>')+'</div>';
+h+='<div style="margin-left:auto;text-align:center">'+(cleared?'<div style="background:#e7f7ec;color:#15803d;border:1px solid #86efac;border-radius:10px;padding:10px 16px;font-weight:700">✅ Cleared for site</div>':'<div style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:10px;padding:9px 15px;font-weight:700">⛔ Not yet cleared<br><span style="font-weight:500;font-size:.74rem">'+(!indOk?'Complete your Mine Induction':(!medOk?'Medical not valid — see HR':'Contractor pack pending approval'))+'</span></div>')+'</div>';
 h+='</div></div></div>';
+h+='<div class="card"><div class="cb" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="font-size:1.4rem">🩺</div><div><b>Medical fitness</b><br><span style="font-size:.82rem;color:#6B7280">'+((typeof medLineFor==='function')?medLineFor(eid):'')+'</span></div><div style="margin-left:auto">'+((typeof medBadgeFor==='function')?medBadgeFor(eid):'')+'</div></div></div>';
 if(next)h+='<div class="card" style="border-left:4px solid #FBB227"><div class="cb" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Your next step</b><p style="color:#6B7280;font-size:.85rem;margin-top:2px">Pick up where you left off.</p></div><button class="btn btn-p" style="width:auto;padding:11px 26px" onclick="goPage(\''+next.p+'\')">'+next.t+' →</button></div></div>';
 else h+='<div class="card" style="border-left:4px solid #22C55E"><div class="cb"><b style="color:#15803d">🎉 You are fully up to date.</b><p style="color:#6B7280;font-size:.85rem;margin-top:2px">All onboarding, induction and job competency requirements are complete.</p></div></div>';
 h+='<div class="sg" style="grid-template-columns:repeat(3,1fr)">';
@@ -1300,4 +1304,42 @@ function setCoStatus(id,st){ var c=contractorCos.find(function(x){return x.id===
 function delCo(id){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; if(!confirm('Remove '+c.name+' from the contractor register? Their people remain, but the pack gate is removed for them.'))return; contractorCos=contractorCos.filter(function(x){return x.id!==id;}); save(); render(); }
 function removeCoDoc(id,di){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; (c.packDocs||[]).splice(di,1); save(); render(); }
 function uploadCoDoc(id){ var inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.doc,.docx,image/*'; inp.onchange=async function(e){ var f=e.target.files[0]; if(!f)return; if(f.size>50*1024*1024){alert('Max 50MB.');return;} var path='contractor-packs/'+id+'_'+Date.now()+'_'+f.name; var r=await sb.storage.from('lms-files').upload(path,f); if(r.error){alert('Upload failed: '+r.error.message);return;} var u=sb.storage.from('lms-files').getPublicUrl(path); var c=contractorCos.find(function(x){return x.id===id;}); c.packDocs=c.packDocs||[]; c.packDocs.push({url:u.data.publicUrl,name:f.name}); await save(); render(); alert('Pack document uploaded.'); }; inp.click(); }
+
+// =====================  MEDICAL FITNESS (Certificate of Fitness gate)  =====================
+// Dates & status only — the actual medical certificate is NOT stored here (it stays on the HR system).
+function medValid(eid){ var e=emps.find(function(x){return x.id===eid;}); if(!e)return false; if(e.medStatus!=='fit')return false; if(!e.medExpiry)return false; var t=new Date();t.setHours(0,0,0,0); return new Date(e.medExpiry)>=t; }
+function medExpired(eid){ var e=emps.find(function(x){return x.id===eid;}); if(!e||!e.medExpiry)return false; var t=new Date();t.setHours(0,0,0,0); return new Date(e.medExpiry)<t; }
+function medBadgeFor(eid){ var e=emps.find(function(x){return x.id===eid;})||{}; if(medValid(eid))return bg('Valid','green'); if(e.medStatus==='unfit')return bg('Not fit','red'); if(medExpired(eid))return bg('Expired','red'); return bg('Not captured','gold'); }
+function medLineFor(eid){ var e=emps.find(function(x){return x.id===eid;})||{}; if(medValid(eid))return 'Approved on system'+(e.medApprovedAt?' '+fd(e.medApprovedAt):'')+(e.medApprovedBy?' by '+e.medApprovedBy:'')+' · valid until '+fd(e.medExpiry); if(e.medStatus==='unfit')return 'Marked not fit for duty — see HR / occupational health.'; if(medExpired(eid))return 'Your medical has expired — book a renewal and provide proof to HR.'; return 'No valid medical captured. Complete your medical and provide your certificate to HR — you are responsible for your own proof.'; }
+
+function renderMedical(){
+  var h='<div class="topbar"><h1>Medical Fitness</h1></div><div class="pc">';
+  h+='<div class="card"><div class="cb"><b>Certificate of Fitness register.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">Capture each person\'s medical fitness <b>status and dates only</b> — the medical certificate itself is <b>not</b> uploaded here, it stays on the HR system. Set a person to <b>Fit for duty</b> with an expiry date and approve them on the system; the person keeps their own proof and is responsible for it. A valid, unexpired medical is a <b>hard requirement for site clearance</b> — no employee or contractor is Cleared for site without one, and expiring medicals are flagged automatically under Expiry &amp; Renewals.</p></div></div>';
+  h+=filterBar(emps,'medSites','medDepts','medSearch');
+  h+=(typeof contractorFilterRow==='function'?contractorFilterRow('medType','medCo'):'');
+  var list=emps.filter(function(e){ if(!inArrOrAll(medSites,e.site))return false; if(!inArrOrAll(medDepts,e.dept||''))return false; if(medSearch){var q=medSearch.toLowerCase(); if((e.id+' '+(e.name||'')).toLowerCase().indexOf(q)<0)return false;} return true; });
+  if(typeof contractorFilter==='function')list=contractorFilter(list,'medType','medCo');
+  var nOk=list.filter(function(e){return medValid(e.id);}).length, nExp=list.filter(function(e){return medExpired(e.id);}).length, nNone=list.filter(function(e){return !medValid(e.id)&&!medExpired(e.id)&&e.medStatus!=='unfit';}).length, nUnfit=list.filter(function(e){return e.medStatus==='unfit';}).length;
+  h+='<div class="sg"><div class="sc gn"><div class="l">Valid</div><div class="v">'+nOk+'</div></div><div class="sc rd"><div class="l">Expired</div><div class="v">'+nExp+'</div></div><div class="sc rd"><div class="l">Not fit</div><div class="v">'+nUnfit+'</div></div><div class="sc gd"><div class="l">Not captured</div><div class="v">'+nNone+'</div></div></div>';
+  h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>Name</th><th>Type</th><th>Site</th><th>Status</th><th>Medical date</th><th>Expiry</th><th>Approved on system</th><th>Capture</th></tr></thead><tbody>';
+  list.sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  list.forEach(function(e){
+    var st=e.medStatus||'';
+    h+='<tr><td style="font-weight:700;color:#FBB227">'+e.id+'</td><td>'+e.name+'</td>';
+    h+='<td style="font-size:.74rem">'+(e.contractor?bg('Contractor','gold')+(e.coName?'<br>'+e.coName:''):bg('Employee','blue'))+'</td>';
+    h+='<td style="font-size:.8rem">'+e.site+'</td>';
+    h+='<td>'+medBadgeFor(e.id)+'</td>';
+    h+='<td><input type="date" id="med-dt-'+e.id+'" value="'+(e.medDate||'')+'" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.78rem"></td>';
+    h+='<td><input type="date" id="med-ex-'+e.id+'" value="'+(e.medExpiry||'')+'" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.78rem"></td>';
+    h+='<td style="font-size:.72rem;color:#6B7280">'+(e.medStatus==='fit'&&e.medApprovedAt?(e.medApprovedBy||'admin')+'<br>'+fd(e.medApprovedAt):'—')+'</td>';
+    h+='<td style="white-space:nowrap"><button class="btn btn-gn btn-sm" onclick="approveMed(\''+e.id+'\')">✓ Fit &amp; approve</button> <button class="btn btn-o btn-sm" onclick="setMedUnfit(\''+e.id+'\')">Not fit</button> <button class="btn btn-d btn-sm" onclick="clearMed(\''+e.id+'\')">Clear</button></td></tr>';
+  });
+  if(!list.length)h+='<tr><td colspan="9" style="text-align:center;color:#6B7280;padding:20px">No people match your filters.</td></tr>';
+  h+='</tbody></table></div></div></div>';
+  return h;
+}
+function _medReadDates(id){ var d=document.getElementById('med-dt-'+id), x=document.getElementById('med-ex-'+id); return {dt:d?d.value:'', ex:x?x.value:''}; }
+function approveMed(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; var v=_medReadDates(id); if(!v.ex){alert('Enter an expiry date before approving the medical.');return;} e.medStatus='fit'; e.medDate=v.dt||''; e.medExpiry=v.ex; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL APPROVED', e.id+' · '+e.name, 'valid to '+fd(v.ex)); save(); render(); }
+function setMedUnfit(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; if(!confirm('Mark '+e.name+' as NOT FIT for duty? They will not be cleared for site.'))return; var v=_medReadDates(id); e.medStatus='unfit'; e.medDate=v.dt||''; e.medExpiry=v.ex||''; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL NOT FIT', e.id+' · '+e.name, ''); save(); render(); }
+function clearMed(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; e.medStatus=''; e.medDate=''; e.medExpiry=''; e.medApprovedBy=''; e.medApprovedAt=''; save(); render(); }
 
