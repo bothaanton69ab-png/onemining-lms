@@ -608,7 +608,13 @@ h+='<div class="fg"><label>Gender</label><select id="nemp-gender"><option value=
 h+='<div class="fg"><label>Department</label><input id="nemp-dept"></div>';
 h+='<div class="fg"><label>Site</label><select id="nemp-site"><option value="">Select...</option>';
 sites.forEach(function(s){h+='<option>'+s+'</option>'});
-h+='</select></div><div class="fg"><label>PIN</label><input id="nemp-pin" value="1234"></div></div>';
+h+='</select></div><div class="fg"><label>PIN</label><input id="nemp-pin" value="1234"></div>';
+h+='<div class="fg"><label>Person Type</label><select id="nemp-type" onchange="document.getElementById(\'con-fields\').style.display=(this.value===\'contractor\'?\'contents\':\'none\')"><option value="employee">Employee</option><option value="contractor">Contractor</option></select></div>';
+h+='<span id="con-fields" style="display:none">';
+h+='<div class="fg"><label>Contractor Company</label><input id="nemp-co" list="co-list"><datalist id="co-list">'+distinctVals(emps.filter(function(e){return e.contractor;}),'coName').map(function(c){return '<option value="'+String(c).replace(/"/g,'&quot;')+'">';}).join('')+'</datalist></div>';
+h+='<div class="fg"><label>Working Area</label><input id="nemp-area" list="area-list"><datalist id="area-list">'+distinctVals(emps.filter(function(e){return e.contractor;}),'area').map(function(c){return '<option value="'+String(c).replace(/"/g,'&quot;')+'">';}).join('')+'</datalist></div>';
+h+='<div class="fg"><label>Responsible Manager</label><select id="nemp-mgr"><option value="">— none —</option>'+(typeof managers!=='undefined'?managers.map(function(m){return '<option value="'+m.id+'">'+String(m.name).replace(/</g,'&lt;')+'</option>';}).join(''):'')+'</select></div>';
+h+='</span></div>';
 h+='<div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="saveEmp()">Save</button><button class="btn btn-o" style="width:auto" onclick="toggleAddEmp()">Cancel</button></div></div></div>';
 h+='<div id="bulk-emp-form" class="card hide"><div class="ch"><h3>CSV Upload</h3></div><div class="cb">';
 h+='<div style="background:#f3f4f6;padding:14px;border-radius:8px;margin-bottom:16px;font-size:.82rem;font-family:monospace"><b>EmployeeNumber, IDNumber, FullName, Gender, Department, Site, PIN</b><br>OM006, 9201015012083, Thabo Mokoena, Male, Processing, Thutse Mining, 1234</div>';
@@ -616,8 +622,10 @@ h+='<div style="display:flex;gap:10px"><button class="btn btn-p" style="width:au
 var males=emps.filter(function(e){return e.gender==='Male'}).length;
 h+='<div class="sg"><div class="sc gd"><div class="l">Total</div><div class="v">'+emps.length+'</div></div><div class="sc bl"><div class="l">Male</div><div class="v">'+males+'</div></div><div class="sc rd"><div class="l">Female</div><div class="v">'+(emps.length-males)+'</div></div></div>';
 h+=filterBar(emps,'meSites','meDepts','meSearch');
-h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>ID Number</th><th>Name</th><th>Gender</th><th>Dept</th><th>Site</th><th>PIN</th><th>Actions</th></tr></thead><tbody>';
-filterEmps(emps,meSites,meDepts,meSearch).forEach(function(e){var i=emps.indexOf(e);h+='<tr><td style="font-weight:700;color:#FBB227">'+e.id+'</td><td style="font-size:.78rem">'+e.idn+'</td><td style="font-weight:600">'+e.name+'</td><td>'+bg(e.gender,e.gender==='Male'?'blue':'gold')+'</td><td>'+e.dept+'</td><td>'+e.site+'</td><td style="font-size:.78rem">'+e.pin+'</td><td><div style="display:flex;gap:5px"><button class="btn btn-o btn-sm" onclick="editEmp('+i+')">Edit</button><button class="btn btn-d btn-sm" onclick="deleteEmp(\''+e.id+'\')">Del</button></div></td></tr>'});
+h+='<div style="margin:-4px 0 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="font-size:.78rem;color:#6B7280">Show:</span>'+['all','employee','contractor'].map(function(t){var lbl=t==='all'?'All':(t==='employee'?'Employees':'Contractors');var sel=meType===t;return '<span style="cursor:pointer;padding:5px 12px;border-radius:16px;font-size:.8rem;font-weight:600;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="meType=\''+t+'\';render()">'+lbl+'</span>';}).join('')+'</div>';
+h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>ID Number</th><th>Name</th><th>Type</th><th>Gender</th><th>Dept</th><th>Site</th><th>PIN</th><th>Actions</th></tr></thead><tbody>';
+var meList=filterEmps(emps,meSites,meDepts,meSearch); if(meType==='employee')meList=meList.filter(function(e){return !e.contractor;}); else if(meType==='contractor')meList=meList.filter(function(e){return e.contractor;});
+meList.forEach(function(e){var i=emps.indexOf(e);var _mgr=(e.respMgr&&typeof getManagerById==='function')?getManagerById(e.respMgr):null;h+='<tr><td style="font-weight:700;color:#FBB227">'+e.id+'</td><td style="font-size:.78rem">'+e.idn+'</td><td style="font-weight:600">'+e.name+'</td><td>'+(e.contractor?bg('Contractor','gold')+(e.coName?'<br><span style="font-size:.7rem;color:#6B7280">'+e.coName+(e.area?' · '+e.area:'')+(_mgr?'<br>Mgr: '+_mgr.name:'')+'</span>':''):bg('Employee','blue'))+'</td><td>'+bg(e.gender,e.gender==='Male'?'blue':'gold')+'</td><td>'+e.dept+'</td><td>'+e.site+'</td><td style="font-size:.78rem">'+e.pin+'</td><td><div style="display:flex;gap:5px"><button class="btn btn-o btn-sm" onclick="editEmp('+i+')">Edit</button><button class="btn btn-d btn-sm" onclick="deleteEmp(\''+e.id+'\')">Del</button></div></td></tr>';});
 return h+'</tbody></table></div></div></div>';
 }
 
@@ -856,16 +864,16 @@ var bf=document.getElementById('bulk-emp-form');if(bf)bf.classList.add('hide');}
 function toggleBulkEmp(){var el=document.getElementById('bulk-emp-form');if(el)el.classList.toggle('hide');var af=document.getElementById('add-emp-form');if(af)af.classList.add('hide');}
 function saveEmp(){var eid=document.getElementById('nemp-id').value.trim();var idn=document.getElementById('nemp-idn').value.trim();
 var name=document.getElementById('nemp-name').value.trim();var gender=document.getElementById('nemp-gender').value;
-var dept=document.getElementById('nemp-dept').value.trim();var site=document.getElementById('nemp-site').value;var pin=document.getElementById('nemp-pin').value.trim()||'1234';
+var dept=document.getElementById('nemp-dept').value.trim();var site=document.getElementById('nemp-site').value;var pin=document.getElementById('nemp-pin').value.trim()||'1234';var _pt=(document.getElementById('nemp-type')||{}).value||'employee';var _isCon=_pt==='contractor';var _co=_isCon?((document.getElementById('nemp-co')||{}).value||''):'';var _area=_isCon?((document.getElementById('nemp-area')||{}).value||''):'';var _mgr=_isCon?((document.getElementById('nemp-mgr')||{}).value||''):'';
 if(!eid||!name||!gender||!site){alert('Employee number, name, gender, site required');return}
 var editId=document.getElementById('edit-emp-id').value;
-if(editId){var idx=emps.findIndex(function(e){return e.id===editId});if(idx>=0)emps[idx]={id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin};}
-else{if(emps.some(function(e){return e.id.toUpperCase()===eid.toUpperCase()})){alert('Already exists');return}emps.push({id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin});}
+if(editId){var idx=emps.findIndex(function(e){return e.id===editId});if(idx>=0)emps[idx]={id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin,contractor:_isCon,coName:_co,area:_area,respMgr:_mgr};}
+else{if(emps.some(function(e){return e.id.toUpperCase()===eid.toUpperCase()})){alert('Already exists');return}emps.push({id:eid,idn:idn,name:name,gender:gender,dept:dept,site:site,pin:pin,contractor:_isCon,coName:_co,area:_area,respMgr:_mgr});}
 save();render();}
 function editEmp(i){var e=emps[i];render();setTimeout(function(){var form=document.getElementById('add-emp-form');if(form)form.classList.remove('hide');
 document.getElementById('edit-emp-id').value=e.id;document.getElementById('emp-form-title').textContent='Edit: '+e.name;
 document.getElementById('nemp-id').value=e.id;document.getElementById('nemp-idn').value=e.idn;document.getElementById('nemp-name').value=e.name;
-document.getElementById('nemp-gender').value=e.gender;document.getElementById('nemp-dept').value=e.dept;document.getElementById('nemp-site').value=e.site;document.getElementById('nemp-pin').value=e.pin;},50);}
+document.getElementById('nemp-gender').value=e.gender;document.getElementById('nemp-dept').value=e.dept;document.getElementById('nemp-site').value=e.site;document.getElementById('nemp-pin').value=e.pin;var _t=document.getElementById('nemp-type');if(_t)_t.value=e.contractor?'contractor':'employee';var _cf=document.getElementById('con-fields');if(_cf)_cf.style.display=e.contractor?'contents':'none';var _c2=document.getElementById('nemp-co');if(_c2)_c2.value=e.coName||'';var _a2=document.getElementById('nemp-area');if(_a2)_a2.value=e.area||'';var _m2=document.getElementById('nemp-mgr');if(_m2)_m2.value=e.respMgr||'';},50);}
 function deleteEmp(eid){if(!confirm('Delete '+eid+'?'))return;emps=emps.filter(function(e){return e.id!==eid});save();render();}
 function dlEmpTemplate(){var csv='EmployeeNumber,IDNumber,FullName,Gender,Department,Site,PIN\nOM006,9201015012083,John Smith,Male,Processing,Thutse Mining,1234\n';
 var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='OneMining_Employee_Template.csv';a.click();}

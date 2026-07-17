@@ -18,8 +18,10 @@ var tnaFilterProg = 'all', tnaSearch = '', jpEdit = null, compEmp = null, compSe
 var compSites=[], compDepts=[], mgrSites=[], mgrDepts=[], mgrSearch='', expSites=[], expDepts=[], expSearch='';
 var libSearch='', jpSearch='', sopArchive=[];
 var crSites=[], crDepts=[], crStatuses=[];
+var crType='all', crMgr=[];
 var progList=[], catList=[], taxEditP=null, taxEditC=null;
 var iaInts=[], iaSites=[], iaDepts=[], iaEmps=[];
+var meType='all';
 var meSites=[], meDepts=[], meSearch='', erSites=[], erDepts=[], erSearch='';
 function getDueBy(eid,code){ var a=xassigns.filter(function(x){return x.eid===eid&&x.code===code&&x.type==='add'&&x.active!==false&&x.dueBy;}); return a.length?a[0].dueBy:null; }
 function empCompClass(eid){
@@ -36,6 +38,9 @@ function complianceBase(){
   return emps.filter(function(e){
     if(crSites.length&&crSites.indexOf(e.site)<0) return false;
     if(crDepts.length&&crDepts.indexOf(e.dept||'')<0) return false;
+    if(crType==='emp'&&e.contractor) return false;
+    if(crType==='con'&&!e.contractor) return false;
+    if(crMgr.length&&crMgr.indexOf(e.respMgr||'')<0) return false;
     return true;
   }).map(function(e){ return {e:e, c:empCounts(e.id), cls:empCompClass(e.id)}; });
 }
@@ -65,18 +70,22 @@ function renderComplianceReport(){
   h+='</div>';
   h+='<div><div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;color:#9099a3;text-transform:uppercase;margin-bottom:7px">Status</div>';
   stats.forEach(function(p){ h+=_chip('cr-stat',p[0],p[1],crStatuses.indexOf(p[0])>=0); });
+  h+='<div style="margin-top:12px"><div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;color:#9099a3;text-transform:uppercase;margin-bottom:7px">Person type</div>';
+  [['all','All'],['emp','Employees'],['con','Contractors']].forEach(function(t){ var sel=crType===t[0]; h+='<span style="cursor:pointer;display:inline-flex;padding:7px 13px;border-radius:20px;font-size:.82rem;font-weight:600;margin:0 8px 8px 0;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="crType=\''+t[0]+'\';render()">'+t[1]+'</span>'; });
+  h+='</div>';
+  if(typeof managers!=='undefined'&&managers.length){ h+='<div style="margin-top:12px"><div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;color:#9099a3;text-transform:uppercase;margin-bottom:7px">Responsible manager</div>'; managers.forEach(function(m){ var sel=crMgr.indexOf(m.id)>=0; h+='<span style="cursor:pointer;display:inline-flex;padding:7px 13px;border-radius:20px;font-size:.82rem;font-weight:600;margin:0 8px 8px 0;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="crToggleMgr(\''+m.id+'\')">'+m.name+'</span>'; }); h+='</div>'; }
   h+='</div></div>';
-  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="printCompliance()">🖨 Print / Save as PDF</button><button class="btn btn-o" style="width:auto" onclick="crSites=[];crDepts=[];crStatuses=[];render()">Clear filters</button></div>';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="printCompliance()">🖨 Print / Save as PDF</button><button class="btn btn-o" style="width:auto" onclick="crSites=[];crDepts=[];crStatuses=[];crType=\'all\';crMgr=[];render()">Clear filters</button></div>';
   h+='</div></div>';
   var base=complianceBase();
   var cc={competent:0,notcompetent:0,notcompleted:0,noset:0}; base.forEach(function(r){cc[r.cls]++;});
   var list=complianceList();
   h+='<div class="sg"><div class="sc gn"><div class="l">Competent</div><div class="v">'+cc.competent+'</div></div><div class="sc rd"><div class="l">Not Yet Competent</div><div class="v">'+cc.notcompetent+'</div></div><div class="sc gd"><div class="l">Not Yet Completed</div><div class="v">'+cc.notcompleted+'</div></div><div class="sc bl"><div class="l">No Job Set</div><div class="v">'+cc.noset+'</div></div></div>';
-  h+='<div class="card"><div class="ch"><h3>Results ('+list.length+')</h3></div><div class="tw"><table><thead><tr><th>Emp#</th><th>Name</th><th>Site</th><th>Dept</th><th>Job Title</th><th>Competent</th><th>Status</th></tr></thead><tbody>';
+  h+='<div class="card"><div class="ch"><h3>Results ('+list.length+')</h3></div><div class="tw"><table><thead><tr><th>Emp#</th><th>Name</th><th>Type</th><th>Site</th><th>Dept</th><th>Job Title</th><th>Competent</th><th>Status</th></tr></thead><tbody>';
   list.forEach(function(r){ var e=r.e,c=r.c;
-    h+='<tr><td style="font-weight:700;color:#FBB227">'+e.id+'</td><td>'+e.name+'</td><td style="font-size:.8rem">'+e.site+'</td><td style="font-size:.8rem">'+(e.dept||'-')+'</td><td style="font-size:.76rem">'+(empJobTitle(e.id)||'-')+'</td><td>'+c.valid+'/'+c.req+'</td><td>'+classBadge(r.cls)+'</td></tr>';
+    h+='<tr><td style="font-weight:700;color:#FBB227">'+e.id+'</td><td>'+e.name+'</td><td style="font-size:.75rem">'+(e.contractor?bg('Contractor','gold')+(e.coName?' '+e.coName:'')+((e.respMgr&&getManagerById(e.respMgr))?'<br>Mgr: '+getManagerById(e.respMgr).name:''):bg('Employee','blue'))+'</td><td style="font-size:.8rem">'+e.site+'</td><td style="font-size:.8rem">'+(e.dept||'-')+'</td><td style="font-size:.76rem">'+(empJobTitle(e.id)||'-')+'</td><td>'+c.valid+'/'+c.req+'</td><td>'+classBadge(r.cls)+'</td></tr>';
   });
-  if(!list.length) h+='<tr><td colspan="7" style="text-align:center;color:#6B7280;padding:18px">No employees match the selected filters.</td></tr>';
+  if(!list.length) h+='<tr><td colspan="8" style="text-align:center;color:#6B7280;padding:18px">No employees match the selected filters.</td></tr>';
   h+='</tbody></table></div></div>';
   return h;
 }
@@ -1068,3 +1077,4 @@ function taxSaveEdit(kind,id){ var o=_taxList(kind).find(function(x){return x.id
 function taxToggle(kind,id){ var o=_taxList(kind).find(function(x){return x.id===id;}); if(!o)return; o.active=(o.active===false); saveTNA().then(function(){render();}); }
 function taxDel(kind,id){ if(!confirm('Delete this '+(kind==='prog'?'programme':'category')+'? Items already tagged with it keep the text; it just stops appearing in the dropdowns.'))return; if(kind==='prog')progList=progList.filter(function(x){return x.id!==id;}); else catList=catList.filter(function(x){return x.id!==id;}); saveTNA().then(function(){render();}); }
 function taxMove(kind,id,dir){ var items=_taxList(kind).slice().sort(_byOrder); var i=items.findIndex(function(x){return x.id===id;}); var j=i+dir; if(j<0||j>=items.length)return; var a=items[i],b=items[j]; var ao=(a.order||0),bo=(b.order||0); a.order=bo; b.order=ao; saveTNA().then(function(){render();}); }
+function crToggleMgr(id){ var i=crMgr.indexOf(id); if(i>=0)crMgr.splice(i,1); else crMgr.push(id); render(); }
