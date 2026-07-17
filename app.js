@@ -134,7 +134,8 @@ async function save() {
         cloudSave('onboarding', onboarding),
         cloudSave('acks', acks),
         cloudSave('contractor_cos', contractorCos),
-        cloudSave('clearances', clearances)
+        cloudSave('clearances', clearances),
+        cloudSave('audit', (typeof auditLog!=='undefined'?auditLog:[]))
     ]);
     var failed = results.filter(function(r){ return !r; }).length;
     if (failed > 0) { console.error(failed + ' save(s) failed'); return false; }
@@ -1293,7 +1294,7 @@ return h;
 // ---------- employee: acknowledgement after passing ----------
 function sopAcked(eid,sc){ return acks.some(function(a){return a.eid===eid&&a.oid==='SOP:'+sc;}); }
 function sopAckRec(eid,sc){ return acks.find(function(a){return a.eid===eid&&a.oid==='SOP:'+sc;}); }
-async function acknowledgeSop(sc){ var cb=document.getElementById('sop-ack'); if(!cb||!cb.checked){alert('Please tick the acknowledgement to complete the module.');return;} if(sopAcked(user.id,sc)){render();return;} acks.push({id:gid(),eid:user.id,oid:'SOP:'+sc,at:now()}); var ok=await save(); if(!ok)alert('⚠️ Save may have failed — please check your connection and try again.'); render(); }
+async function acknowledgeSop(sc){ var cb=document.getElementById('sop-ack'); if(!cb||!cb.checked){alert('Please tick the acknowledgement to complete the module.');return;} if(sopAcked(user.id,sc)){render();return;} acks.push({id:gid(),eid:user.id,oid:'SOP:'+sc,at:now()}); if(typeof logAudit==='function')logAudit('TRAINING ACKNOWLEDGED', user.id+' · '+user.name, sc); var ok=await save(); if(!ok)alert('⚠️ Save may have failed — please check your connection and try again.'); render(); }
 function erToggleCo(v){ var c=decodeURIComponent(v); var i=erCo.indexOf(c); if(i>=0)erCo.splice(i,1); else erCo.push(c); render(); }
 
 // =====================  CONTRACTOR COMPANIES (pack approval gate)  =====================
@@ -1328,12 +1329,12 @@ function renderContractorCos(){
   h+='</tbody></table></div></div></div>';
   return h;
 }
-function addCo(){ var n=document.getElementById('cco-name').value.trim(); if(!n){alert('Enter a company name.');return;} if(getCo(n)){alert('That company is already in the register.');return;} contractorCos.push({id:gid(),name:n,contact:document.getElementById('cco-contact').value.trim(),packStatus:'pending',packDocs:[],approvedBy:'',approvedAt:'',expiry:'',createdAt:now()}); save(); render(); }
+function addCo(){ var n=document.getElementById('cco-name').value.trim(); if(!n){alert('Enter a company name.');return;} if(getCo(n)){alert('That company is already in the register.');return;} contractorCos.push({id:gid(),name:n,contact:document.getElementById('cco-contact').value.trim(),packStatus:'pending',packDocs:[],approvedBy:'',approvedAt:'',expiry:'',createdAt:now()}); if(typeof logAudit==='function')logAudit('CONTRACTOR CO ADDED', n, ''); save(); render(); }
 function addCoByName(v){ var nm=decodeURIComponent(v); if(getCo(nm))return; contractorCos.push({id:gid(),name:nm,contact:'',packStatus:'pending',packDocs:[],approvedBy:'',approvedAt:'',expiry:'',createdAt:now()}); save(); render(); }
 function setCoStatus(id,st){ if(typeof can==='function'&&!can('packs')){alert('Only the contractor-pack approver (or admin) can change pack status.');return;} var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; var exp=document.getElementById('cco-exp-'+id); if(exp)c.expiry=exp.value||''; if(st==='approved'){ if(!(c.packDocs&&c.packDocs.length)){ if(!confirm('No pack document has been uploaded yet. Approve anyway?'))return; } c.packStatus='approved'; c.approvedBy=(user&&user.name)||'admin'; c.approvedAt=now(); } else { c.packStatus=st; c.approvedAt=''; c.approvedBy=''; } if(typeof logAudit==='function')logAudit('CONTRACTOR PACK '+st.toUpperCase(), c.name, ''); save(); render(); }
-function delCo(id){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; if(!confirm('Remove '+c.name+' from the contractor register? Their people remain, but the pack gate is removed for them.'))return; contractorCos=contractorCos.filter(function(x){return x.id!==id;}); save(); render(); }
+function delCo(id){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; if(!confirm('Remove '+c.name+' from the contractor register? Their people remain, but the pack gate is removed for them.'))return; if(typeof logAudit==='function')logAudit('CONTRACTOR CO REMOVED', c.name, ''); contractorCos=contractorCos.filter(function(x){return x.id!==id;}); save(); render(); }
 function removeCoDoc(id,di){ var c=contractorCos.find(function(x){return x.id===id;}); if(!c)return; (c.packDocs||[]).splice(di,1); save(); render(); }
-function uploadCoDoc(id){ var inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.doc,.docx,image/*'; inp.onchange=async function(e){ var f=e.target.files[0]; if(!f)return; if(f.size>50*1024*1024){alert('Max 50MB.');return;} var path='contractor-packs/'+id+'_'+Date.now()+'_'+f.name; var r=await sb.storage.from('lms-files').upload(path,f); if(r.error){alert('Upload failed: '+r.error.message);return;} var u=sb.storage.from('lms-files').getPublicUrl(path); var c=contractorCos.find(function(x){return x.id===id;}); c.packDocs=c.packDocs||[]; c.packDocs.push({url:u.data.publicUrl,name:f.name}); await save(); render(); alert('Pack document uploaded.'); }; inp.click(); }
+function uploadCoDoc(id){ var inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.doc,.docx,image/*'; inp.onchange=async function(e){ var f=e.target.files[0]; if(!f)return; if(f.size>50*1024*1024){alert('Max 50MB.');return;} var path='contractor-packs/'+id+'_'+Date.now()+'_'+f.name; var r=await sb.storage.from('lms-files').upload(path,f); if(r.error){alert('Upload failed: '+r.error.message);return;} var u=sb.storage.from('lms-files').getPublicUrl(path); var c=contractorCos.find(function(x){return x.id===id;}); c.packDocs=c.packDocs||[]; c.packDocs.push({url:u.data.publicUrl,name:f.name}); if(typeof logAudit==='function')logAudit('CONTRACTOR PACK DOC UPLOADED', c.name, f.name); await save(); render(); alert('Pack document uploaded.'); }; inp.click(); }
 
 // =====================  MEDICAL FITNESS (Certificate of Fitness gate)  =====================
 // Dates & status only — the actual medical certificate is NOT stored here (it stays on the HR system).
@@ -1345,14 +1346,14 @@ function medLineFor(eid){ var e=emps.find(function(x){return x.id===eid;})||{}; 
 function renderMedical(){
   if(typeof can==='function'&&!can('medical'))return accessDenied('Medical Fitness');
   var h='<div class="topbar"><h1>Medical Fitness</h1></div><div class="pc">';
-  h+='<div class="card"><div class="cb"><b>Certificate of Fitness register.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">Capture each person\'s medical fitness <b>status and dates only</b> — the medical certificate itself is <b>not</b> uploaded here, it stays on the HR system. Set a person to <b>Fit for duty</b> with an expiry date and approve them on the system; the person keeps their own proof and is responsible for it. A valid, unexpired medical is a <b>hard requirement for site clearance</b> — no employee or contractor is Cleared for site without one, and expiring medicals are flagged automatically under Expiry &amp; Renewals.</p></div></div>';
+  h+='<div class="card"><div class="cb"><b>Certificate of Fitness register.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">Capture each person\'s medical fitness <b>status and dates only</b> — the medical certificate itself is <b>not</b> uploaded here, it stays on the HR system. Enter the <b>medical date</b> and press Fit &amp; approve; the <b>expiry is set automatically to one year later</b> (no expiry to type in). The person keeps their own proof and is responsible for it. A valid, unexpired medical is a <b>hard requirement for site clearance</b> — no employee or contractor is Cleared for site without one, and expiring medicals are flagged automatically under Expiry &amp; Renewals.</p></div></div>';
   h+=filterBar(emps,'medSites','medDepts','medSearch');
   h+=(typeof contractorFilterRow==='function'?contractorFilterRow('medType','medCo'):'');
   var list=emps.filter(function(e){ if(!inArrOrAll(medSites,e.site))return false; if(!inArrOrAll(medDepts,e.dept||''))return false; if(medSearch){var q=medSearch.toLowerCase(); if((e.id+' '+(e.name||'')).toLowerCase().indexOf(q)<0)return false;} return true; });
   if(typeof contractorFilter==='function')list=contractorFilter(list,'medType','medCo');
   var nOk=list.filter(function(e){return medValid(e.id);}).length, nExp=list.filter(function(e){return medExpired(e.id);}).length, nNone=list.filter(function(e){return !medValid(e.id)&&!medExpired(e.id)&&e.medStatus!=='unfit';}).length, nUnfit=list.filter(function(e){return e.medStatus==='unfit';}).length;
   h+='<div class="sg"><div class="sc gn"><div class="l">Valid</div><div class="v">'+nOk+'</div></div><div class="sc rd"><div class="l">Expired</div><div class="v">'+nExp+'</div></div><div class="sc rd"><div class="l">Not fit</div><div class="v">'+nUnfit+'</div></div><div class="sc gd"><div class="l">Not captured</div><div class="v">'+nNone+'</div></div></div>';
-  h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>Name</th><th>Type</th><th>Site</th><th>Status</th><th>Medical date</th><th>Expiry</th><th>Approved on system</th><th>Capture</th></tr></thead><tbody>';
+  h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>Name</th><th>Type</th><th>Site</th><th>Status</th><th>Medical date</th><th>Expiry (auto +1yr)</th><th>Approved on system</th><th>Capture</th></tr></thead><tbody>';
   list.sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   list.forEach(function(e){
     var st=e.medStatus||'';
@@ -1360,8 +1361,8 @@ function renderMedical(){
     h+='<td style="font-size:.74rem">'+(e.contractor?bg('Contractor','gold')+(e.coName?'<br>'+e.coName:''):bg('Employee','blue'))+'</td>';
     h+='<td style="font-size:.8rem">'+e.site+'</td>';
     h+='<td>'+medBadgeFor(e.id)+'</td>';
-    h+='<td><input type="date" id="med-dt-'+e.id+'" value="'+(e.medDate||'')+'" onchange="_medDraft(\''+e.id+'\',\'dt\',this.value)" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.78rem"></td>';
-    h+='<td><input type="date" id="med-ex-'+e.id+'" value="'+(e.medExpiry||'')+'" onchange="_medDraft(\''+e.id+'\',\'ex\',this.value)" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.78rem"></td>';
+    h+='<td><input type="date" id="med-dt-'+e.id+'" value="'+(e.medDate||'')+'" onchange="_medDraft(\''+e.id+'\',\'dt\',this.value);render()" style="padding:6px 8px;border:1.5px solid #e2e5e9;border-radius:6px;font-size:.78rem"></td>';
+    h+='<td style="font-size:.8rem">'+(e.medExpiry?'<b>'+fd(e.medExpiry)+'</b>':(e.medDate?'<span style="color:#6B7280">auto: '+fd(addYears(e.medDate,1))+'</span>':'<span style="color:#9ca3af">auto (1 yr)</span>'))+'</td>';
     h+='<td style="font-size:.72rem;color:#6B7280">'+(e.medStatus==='fit'&&e.medApprovedAt?(e.medApprovedBy||'admin')+'<br>'+fd(e.medApprovedAt):'—')+'</td>';
     h+='<td style="white-space:nowrap"><button class="btn btn-gn btn-sm" onclick="approveMed(\''+e.id+'\')">✓ Fit &amp; approve</button> <button class="btn btn-o btn-sm" onclick="setMedUnfit(\''+e.id+'\')">Not fit</button> <button class="btn btn-d btn-sm" onclick="clearMed(\''+e.id+'\')">Clear</button></td></tr>';
   });
@@ -1369,11 +1370,12 @@ function renderMedical(){
   h+='</tbody></table></div></div></div>';
   return h;
 }
-function _medReadDates(id){ var d=document.getElementById('med-dt-'+id), x=document.getElementById('med-ex-'+id); return {dt:d?d.value:'', ex:x?x.value:''}; }
-function _medDraft(id,which,val){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; if(which==='dt')e.medDate=val; else e.medExpiry=val; }
-function approveMed(id){ if(typeof can==='function'&&!can('medical')){alert('Only the HR / medical capturer (or admin) can approve medicals.');return;} var e=emps.find(function(x){return x.id===id;}); if(!e)return; var v=_medReadDates(id); if(!v.ex){alert('Enter an expiry date before approving the medical.');return;} e.medStatus='fit'; e.medDate=v.dt||''; e.medExpiry=v.ex; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL APPROVED', e.id+' · '+e.name, 'valid to '+fd(v.ex)); save(); render(); }
-function setMedUnfit(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; if(!confirm('Mark '+e.name+' as NOT FIT for duty? They will not be cleared for site.'))return; var v=_medReadDates(id); e.medStatus='unfit'; e.medDate=v.dt||''; e.medExpiry=v.ex||''; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL NOT FIT', e.id+' · '+e.name, ''); save(); render(); }
-function clearMed(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; e.medStatus=''; e.medDate=''; e.medExpiry=''; e.medApprovedBy=''; e.medApprovedAt=''; save(); render(); }
+function addYears(dstr,n){ if(!dstr)return ''; var d=new Date(dstr); if(isNaN(d))return ''; d.setFullYear(d.getFullYear()+n); var mm=('0'+(d.getMonth()+1)).slice(-2), dd=('0'+d.getDate()).slice(-2); return d.getFullYear()+'-'+mm+'-'+dd; }
+function _medReadDate(id){ var d=document.getElementById('med-dt-'+id); return d?d.value:''; }
+function _medDraft(id,which,val){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; if(which==='dt'){ e.medDate=val; e.medExpiry=val?addYears(val,1):''; } }
+function approveMed(id){ if(typeof can==='function'&&!can('medical')){alert('Only the HR / medical capturer (or admin) can approve medicals.');return;} var e=emps.find(function(x){return x.id===id;}); if(!e)return; var dt=_medReadDate(id)||e.medDate||''; if(!dt){alert('Enter the medical date first — the expiry is set automatically to one year later.');return;} e.medStatus='fit'; e.medDate=dt; e.medExpiry=addYears(dt,1); e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL APPROVED', e.id+' · '+e.name, 'medical '+fd(dt)+' · valid to '+fd(e.medExpiry)); save(); render(); }
+function setMedUnfit(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; if(!confirm('Mark '+e.name+' as NOT FIT for duty? They will not be cleared for site.'))return; var dt=_medReadDate(id)||e.medDate||''; e.medStatus='unfit'; e.medDate=dt; e.medExpiry=''; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL NOT FIT', e.id+' · '+e.name, ''); save(); render(); }
+function clearMed(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; if(typeof logAudit==='function')logAudit('MEDICAL CLEARED', e.id+' · '+e.name, ''); e.medStatus=''; e.medDate=''; e.medExpiry=''; e.medApprovedBy=''; e.medApprovedAt=''; save(); render(); }
 
 // =====================  SITE CLEARANCE — final facilitator sign-off  =====================
 function clearanceStatus(eid){

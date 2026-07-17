@@ -12,6 +12,7 @@ var jobprofiles   = [];   // [{title,group,required:[code],tbc:[code]}]
 var xassigns      = [];   // per-person add/remove: {id,eid,code,type:'add'|'remove',active,dt,by,reason}
 var comp          = [];    // completion history (append-only): {id,eid,code,cname,dt,validUntil,method,by,note}
 var auditLog      = [];    // change history: {id,dt,admin,action,detail,reason,before,after}
+var audSearch='', audCat='', audWho='', audFrom='', audTo='';
 var empjobs       = {};    // eid -> {title, history:[{title,dt,by}]}  (kept separate from emps to preserve history)
 var managers      = [];    // [{id,name,username,password,role:'manager'|'training',allAccess,sites:[],depts:[],jobGroups:[],emps:[]}]
 var mgrView='report';
@@ -531,15 +532,55 @@ function addJobProfile(){
 }
 
 // =====================  RENDER: AUDIT LOG  =====================
-function renderAuditLog(){
-  var h='<div class="topbar"><h1>Audit Log</h1><span style="font-size:.78rem;color:#6B7280">'+auditLog.length+' entries</span></div><div class="pc">';
-  h+='<div class="card"><div class="tw"><table><thead><tr><th>Date</th><th>By</th><th>Action</th><th>Detail</th><th>Reason</th></tr></thead><tbody>';
-  auditLog.slice(0,300).forEach(function(a){
-    var det=a.detail; if(a.eid) det=(a.eid||'')+(a.sc?' · '+a.sc:'')+' '+det;
-    h+='<tr><td style="font-size:.76rem;white-space:nowrap">'+fd(a.dt)+'</td><td style="font-size:.8rem">'+(a.admin||'-')+'</td><td>'+bg(a.action,'blue')+'</td><td style="font-size:.82rem">'+(det||'')+'</td><td style="font-size:.8rem;color:#6B7280">'+(a.reason||'')+'</td></tr>';
+function auditCategory(action){ var a=(action||'').toUpperCase();
+  if(a.indexOf('MEDICAL')>=0)return 'Medical';
+  if(a.indexOf('PACK')>=0||a.indexOf('CONTRACTOR')>=0)return 'Contractor packs';
+  if(a.indexOf('CLEARANCE')>=0)return 'Site clearance';
+  if(a.indexOf('TRAINING')>=0||a.indexOf('SOP')>=0||a.indexOf('CONTENT')>=0||a.indexOf('REVISE')>=0||a.indexOf('COMPLETE')>=0)return 'Training';
+  if(a.indexOf('ONBOARD')>=0||a.indexOf('ACK')>=0)return 'Onboarding';
+  if(a.indexOf('MANAGER')>=0||a.indexOf('ACCOUNT')>=0)return 'Accounts';
+  if(a.indexOf('EMPLOYEE')>=0||a.indexOf('EMP')>=0||a.indexOf('PERSON')>=0)return 'People';
+  return 'Other';
+}
+function auditFiltered(){
+  return auditLog.filter(function(a){
+    if(audCat && auditCategory(a.action)!==audCat) return false;
+    if(audWho && (a.admin||'')!==audWho) return false;
+    if(audFrom){ if(new Date(a.dt) < new Date(audFrom)) return false; }
+    if(audTo){ var t2=new Date(audTo); t2.setHours(23,59,59,999); if(new Date(a.dt) > t2) return false; }
+    if(audSearch){ var q=audSearch.toLowerCase(); var blob=((a.action||'')+' '+(a.detail||'')+' '+(a.reason||'')+' '+(a.admin||'')+' '+(a.eid||'')+' '+(a.sc||'')).toLowerCase(); if(blob.indexOf(q)<0) return false; }
+    return true;
   });
-  if(!auditLog.length) h+='<tr><td colspan="5" style="text-align:center;color:#6B7280;padding:24px">No changes recorded yet.</td></tr>';
+}
+function renderAuditLog(){
+  var cats=['Medical','Contractor packs','Site clearance','Training','Onboarding','People','Accounts','Other'];
+  var whos=[]; auditLog.forEach(function(a){ if(a.admin&&whos.indexOf(a.admin)<0)whos.push(a.admin); }); whos.sort();
+  var rows=auditFiltered();
+  var h='<div class="topbar"><h1>Audit Log &amp; Change History</h1><span style="font-size:.78rem;color:#6B7280">'+rows.length+' of '+auditLog.length+' entries</span></div><div class="pc">';
+  h+='<div class="card"><div class="cb"><p style="font-size:.84rem;color:#6B7280;margin-bottom:10px">Every change is time-stamped with <b>who</b> did it and <b>what</b> they did — HR medicals, contractor-pack approvals, facilitator sign-offs, training captured, account changes and employee acknowledgements. Search or filter to find exactly what you need.</p>';
+  h+='<input placeholder="🔎 Search name, employee no., action, code or reason..." value="'+audSearch.replace(/"/g,'&quot;')+'" onchange="audSearch=this.value;render()" style="width:100%;padding:10px 12px;border:2px solid #e2e5e9;border-radius:8px;margin-bottom:10px">';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
+  h+='<div><div style="font-size:.7rem;font-weight:700;color:#9099a3;text-transform:uppercase;margin-bottom:4px">Category</div><select onchange="audCat=this.value;render()" style="padding:8px 10px;border:2px solid #e2e5e9;border-radius:8px"><option value="">All categories</option>'+cats.map(function(c){return '<option'+(audCat===c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>';
+  h+='<div><div style="font-size:.7rem;font-weight:700;color:#9099a3;text-transform:uppercase;margin-bottom:4px">Done by</div><select onchange="audWho=this.value;render()" style="padding:8px 10px;border:2px solid #e2e5e9;border-radius:8px"><option value="">Anyone</option>'+whos.map(function(w){return '<option'+(audWho===w?' selected':'')+'>'+w.replace(/</g,'&lt;')+'</option>';}).join('')+'</select></div>';
+  h+='<div><div style="font-size:.7rem;font-weight:700;color:#9099a3;text-transform:uppercase;margin-bottom:4px">From</div><input type="date" value="'+audFrom+'" onchange="audFrom=this.value;render()" style="padding:7px 9px;border:2px solid #e2e5e9;border-radius:8px"></div>';
+  h+='<div><div style="font-size:.7rem;font-weight:700;color:#9099a3;text-transform:uppercase;margin-bottom:4px">To</div><input type="date" value="'+audTo+'" onchange="audTo=this.value;render()" style="padding:7px 9px;border:2px solid #e2e5e9;border-radius:8px"></div>';
+  h+='<button class="btn btn-o btn-sm" style="align-self:flex-end" onclick="audSearch=\'\';audCat=\'\';audWho=\'\';audFrom=\'\';audTo=\'\';render()">Clear</button>';
+  h+='<button class="btn btn-p btn-sm" style="align-self:flex-end" onclick="dlAuditCSV()">📥 Export CSV</button>';
+  h+='</div></div></div>';
+  h+='<div class="card"><div class="tw"><table><thead><tr><th>Date &amp; time</th><th>Category</th><th>By</th><th>Action</th><th>Detail</th><th>Reason</th></tr></thead><tbody>';
+  rows.slice(0,500).forEach(function(a){
+    var det=a.detail; if(a.eid) det=(a.eid||'')+(a.sc?' · '+a.sc:'')+' '+det;
+    var dtxt=fd(a.dt); try{ dtxt=new Date(a.dt).toLocaleString('en-ZA',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){}
+    h+='<tr><td style="font-size:.74rem;white-space:nowrap">'+dtxt+'</td><td style="font-size:.74rem">'+bg(auditCategory(a.action),'gray')+'</td><td style="font-size:.8rem;font-weight:600">'+(a.admin||'-')+'</td><td style="font-size:.78rem">'+bg(a.action,'blue')+'</td><td style="font-size:.82rem">'+(det||'')+'</td><td style="font-size:.8rem;color:#6B7280">'+(a.reason||'')+'</td></tr>';
+  });
+  if(!rows.length) h+='<tr><td colspan="6" style="text-align:center;color:#6B7280;padding:24px">'+(auditLog.length?'No entries match your search.':'No changes recorded yet.')+'</td></tr>';
+  if(rows.length>500) h+='<tr><td colspan="6" style="text-align:center;color:#9099a3;padding:12px;font-size:.78rem">Showing the newest 500 of '+rows.length+' matches — narrow your search to see more.</td></tr>';
   return h+'</tbody></table></div></div></div>';
+}
+function dlAuditCSV(){
+  var rows=auditFiltered(); var csv='DateTime,Category,By,Action,Detail,Reason\n';
+  rows.forEach(function(a){ var det=a.detail; if(a.eid)det=(a.eid||'')+(a.sc?' '+a.sc:'')+' '+det; csv+=['"'+a.dt+'"','"'+auditCategory(a.action)+'"','"'+(a.admin||'').replace(/"/g,'')+'"','"'+(a.action||'').replace(/"/g,'')+'"','"'+(det||'').replace(/"/g,'')+'"','"'+(a.reason||'').replace(/"/g,'')+'"'].join(',')+'\n'; });
+  var el=document.createElement('a'); el.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); el.download='OneMining_Audit_Log.csv'; el.click();
 }
 
 // =====================  COMPETENCE (per employee)  =====================
