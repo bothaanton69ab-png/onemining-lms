@@ -14,6 +14,7 @@ var comp          = [];    // completion history (append-only): {id,eid,code,cna
 var auditLog      = [];    // change history: {id,dt,admin,action,detail,reason,before,after}
 var empjobs       = {};    // eid -> {title, history:[{title,dt,by}]}  (kept separate from emps to preserve history)
 var managers      = [];    // [{id,name,username,password,role:'manager'|'training',allAccess,sites:[],depts:[],jobGroups:[],emps:[]}]
+var mgrView='report';
 var tnaFilterProg = 'all', tnaSearch = '', jpEdit = null, compEmp = null, compSearch = '', mgrEmp = null, mmgrEdit = null;
 var compSites=[], compDepts=[], mgrSites=[], mgrDepts=[], mgrSearch='', expSites=[], expDepts=[], expSearch='';
 var libSearch='', jpSearch='', sopArchive=[];
@@ -772,9 +773,10 @@ function isCompetent(eid){ var req=empRequired(eid); for(var i=0;i<req.length;i+
 function renderManagerShell(){
   var mgr=user.mgr; var nm=user.name||'Manager';
   var sb='<aside class="sb"><div class="sb-brand"><div class="sb-logo"><img src="'+BRAND.logo+'" alt=""></div><h2>'+BRAND.name+'</h2><p>'+(user.role==='training'?'Training Dept':'Manager')+'</p></div><div class="sb-nav">';
-  sb+='<div class="ni a" onclick="mgrEmp=null;render()">📋 Compliance Report</div>';
+  sb+='<div class="ni'+(mgrView==='clearance'?'':' a')+'" onclick="mgrView=\'report\';mgrEmp=null;render()">📋 Compliance Report</div>';
+  if(user.role==='training') sb+='<div class="ni'+(mgrView==='clearance'?' a':'')+'" onclick="mgrView=\'clearance\';mgrEmp=null;render()">✅ Site Clearance</div>';
   sb+='</div><div class="sb-u"><div class="nm">'+nm+'</div><div class="rl">'+(mgr&&mgr.allAccess?'All sites':'Scoped access')+'</div><div class="ni" style="margin-top:8px;padding:8px 0" onclick="doLogout()">← Sign Out</div></div></aside>';
-  var mc='<main class="mc">'+(mgrEmp?renderManagerEmp(mgrEmp):renderManagerReport())+'</main>';
+  var mc='<main class="mc">'+((mgrView==='clearance'&&user.role==='training'&&typeof renderClearance==='function')?renderClearance():(mgrEmp?renderManagerEmp(mgrEmp):renderManagerReport()))+'</main>';
   return '<div class="app">'+sb+mc+'</div>';
 }
 function renderManagerReport(){

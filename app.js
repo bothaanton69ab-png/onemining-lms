@@ -5,8 +5,10 @@ function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{da
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
 var onboarding=[], acks=[], activeOnb=null, libSearch='', libCat='', libProg='', contractorCos=[];
 var medSites=[], medDepts=[], medSearch='', medType='all', medCo=[];
+var clearances=[], clrSites=[], clrDepts=[], clrSearch='', clrType='all', clrCo=[];
 var asgnJobMode='individual', asgnJobEid='', asgnJobSite='', asgnJobDept='';
 var contentEditId=null, contentSearch='';
+var msSel={}, msBulkProg='', msBulkCat='';
 function cleanStr(s){return(s||'').replace(/[^\x20-\x7E]/g,'').trim()}
 
 // Data variables (loaded from Supabase on init)
@@ -106,6 +108,7 @@ async function save() {
         notifs = mergeById(cloudNotifs, notifs);
         try{ acks = mergeById(await cloudLoad('acks', []), acks); }catch(e){}
         try{ contractorCos = await cloudLoad('contractor_cos', []); }catch(e){}
+        try{ clearances = mergeById(await cloudLoad('clearances', []), clearances); }catch(e){}
         unlockLog = mergeById(cloudUnlock, unlockLog);
 
         // For emps and sops — admin is sole editor, use local version
@@ -130,7 +133,8 @@ async function save() {
         cloudSave('unlock', unlockLog),
         cloudSave('onboarding', onboarding),
         cloudSave('acks', acks),
-        cloudSave('contractor_cos', contractorCos)
+        cloudSave('contractor_cos', contractorCos),
+        cloudSave('clearances', clearances)
     ]);
     var failed = results.filter(function(r){ return !r; }).length;
     if (failed > 0) { console.error(failed + ' save(s) failed'); return false; }
@@ -165,6 +169,7 @@ async function init() {
         onboarding = await cloudLoad('onboarding', []);
         acks = await cloudLoad('acks', []);
         contractorCos = await cloudLoad('contractor_cos', []);
+        clearances = await cloudLoad('clearances', []);
         await tnaLoad();
         await indLoad();
         render();
@@ -217,6 +222,7 @@ sb+='<div class="ni'+(page==='emprec'?' a':'')+'" onclick="goPage(\'emprec\')">�
 sb+='<div class="ni'+(page==='mmgr'?' a':'')+'" onclick="goPage(\'mmgr\')">👔 Manager Accounts</div>';
 sb+='<div class="ni'+(page==='ccos'?' a':'')+'" onclick="goPage(\'ccos\')">🏗️ Contractor Companies</div>';
 sb+='<div class="ni'+(page==='medical'?' a':'')+'" onclick="goPage(\'medical\')">🩺 Medical Fitness</div>';
+sb+='<div class="ni'+(page==='clearance'?' a':'')+'" onclick="goPage(\'clearance\')">✅ Site Clearance</div>';
 sb+='<div class="sb-sec">MONITOR & COMPLIANCE</div>';
 sb+='<div class="ni'+(page==='comp'?' a':'')+'" onclick="goPage(\'comp\')">🎯 Competence</div>';
 sb+='<div class="ni'+(page==='expiry'?' a':'')+'" onclick="goPage(\'expiry\')">⏰ Expiry & Renewals</div>';
@@ -248,6 +254,7 @@ else if(page==='onbproof'&&isA)mc+=renderOnbProof();
 else if(page==='tax'&&isA)mc+=renderTax();
 else if(page==='ccos'&&isA)mc+=renderContractorCos();
 else if(page==='medical'&&isA)mc+=renderMedical();
+else if(page==='clearance'&&isA)mc+=renderClearance();
 else if(page==='mint'&&isA)mc+=renderInterventions();
 else if(page==='mjp'&&isA)mc+=renderJobProfiles();
 else if(page==='expiry'&&isA)mc+=renderExpiry();
@@ -292,6 +299,8 @@ h+='<p style="font-size:.82rem;color:#6B7280"><b>#'+user.id+'</b> · '+user.dept
 h+='<div style="margin-left:auto;text-align:center">'+(cleared?'<div style="background:#e7f7ec;color:#15803d;border:1px solid #86efac;border-radius:10px;padding:10px 16px;font-weight:700">✅ Cleared for site</div>':'<div style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:10px;padding:9px 15px;font-weight:700">⛔ Not yet cleared<br><span style="font-weight:500;font-size:.74rem">'+(!indOk?'Complete your Mine Induction':(!medOk?'Medical not valid — see HR':'Contractor pack pending approval'))+'</span></div>')+'</div>';
 h+='</div></div></div>';
 h+='<div class="card"><div class="cb" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="font-size:1.4rem">🩺</div><div><b>Medical fitness</b><br><span style="font-size:.82rem;color:#6B7280">'+((typeof medLineFor==='function')?medLineFor(eid):'')+'</span></div><div style="margin-left:auto">'+((typeof medBadgeFor==='function')?medBadgeFor(eid):'')+'</div></div></div>';
+var _me=emps.find(function(x){return x.id===eid;})||{};
+if(_me.contractor){var _co=(typeof getCo==='function')?getCo(_me.coName):null;var _pok=(typeof contractorCoApproved==='function')?contractorCoApproved(_me.coName):false;var _pl=_pok?('Your company '+(_me.coName||'')+'\'s pack is approved'+(_co&&_co.expiry?', valid until '+fd(_co.expiry):'')+'.'):(_co?('Your company '+(_me.coName||'')+'\'s pack is '+(_co.packStatus==='rejected'?'rejected':'pending approval')+' — you can keep training, but final site access is held until it is approved.'):('Your company '+(_me.coName||'')+' is not set up on the system yet — final site access is held until their contractor pack is approved.'));var _pb=_pok?bg('Approved','green'):(_co&&_co.packStatus==='rejected'?bg('Rejected','red'):bg('Pending','gold'));h+='<div class="card"><div class="cb" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="font-size:1.4rem">📋</div><div><b>Contractor pack</b><br><span style="font-size:.82rem;color:#6B7280">'+_pl+'</span></div><div style="margin-left:auto">'+_pb+'</div></div></div>';}
 if(next)h+='<div class="card" style="border-left:4px solid #FBB227"><div class="cb" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Your next step</b><p style="color:#6B7280;font-size:.85rem;margin-top:2px">Pick up where you left off.</p></div><button class="btn btn-p" style="width:auto;padding:11px 26px" onclick="goPage(\''+next.p+'\')">'+next.t+' →</button></div></div>';
 else h+='<div class="card" style="border-left:4px solid #22C55E"><div class="cb"><b style="color:#15803d">🎉 You are fully up to date.</b><p style="color:#6B7280;font-size:.85rem;margin-top:2px">All onboarding, induction and job competency requirements are complete.</p></div></div>';
 h+='<div class="sg" style="grid-template-columns:repeat(3,1fr)">';
@@ -575,17 +584,36 @@ var q=(typeof contentSearch!=='undefined'?contentSearch:'')||'';
 h+='<div class="card"><div class="cb"><input placeholder="🔎 Search code, title, programme or category..." value="'+q.replace(/"/g,'&quot;')+'" onchange="contentSearch=this.value;render()" style="width:100%;padding:10px 12px;border:2px solid #e2e5e9;border-radius:8px"></div></div>';
 var list=sops.slice();
 if(q){var lq=q.toLowerCase(); list=list.filter(function(s){return ((s.code||'')+' '+(s.title||'')+' '+(s.programme||'')+' '+(s.cat||'')).toLowerCase().indexOf(lq)>=0;});}
-h+='<div class="card"><div class="tw"><table><thead><tr><th>Code</th><th>Title / tags</th><th>Content</th><th>Manage</th></tr></thead><tbody>';
-if(!list.length)h+='<tr><td colspan="4" style="text-align:center;color:#6B7280;padding:20px">No items'+(q?' match your search':' yet')+'.</td></tr>';
+// ----- bulk edit toolbar -----
+var cnt=sops.filter(function(s){return msSel[s.id];}).length;
+var progOpts='<option value="">— choose programme —</option>'+(typeof programmes==='function'?programmes():[]).map(function(p){return '<option'+(msBulkProg===p?' selected':'')+'>'+p+'</option>';}).join('');
+var catOpts=(typeof catNames==='function'?catNames():[]).map(function(c){return '<option value="'+c.replace(/"/g,'&quot;')+'">';}).join('');
+h+='<div class="card" style="border-left:4px solid #FBB227"><div class="cb"><div style="font-size:.72rem;font-weight:700;letter-spacing:.04em;color:#9099a3;text-transform:uppercase;margin-bottom:8px">Bulk edit — tick items below, then apply</div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">';
+h+='<div style="font-weight:700;min-width:90px">'+cnt+' selected</div>';
+h+='<div style="min-width:180px"><label style="font-size:.72rem;font-weight:600">Programme</label><select id="ms-bulk-prog" onchange="msBulkProg=this.value" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px">'+progOpts+'</select></div>';
+h+='<button class="btn btn-p" style="width:auto" onclick="msApplyProg()">Apply programme</button>';
+h+='<div style="min-width:180px"><label style="font-size:.72rem;font-weight:600">Category (subject)</label><input id="ms-bulk-cat" list="ms-bulk-cats" value="'+msBulkCat.replace(/"/g,'&quot;')+'" onchange="msBulkCat=this.value" placeholder="e.g. Environmental" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"><datalist id="ms-bulk-cats">'+catOpts+'</datalist></div>';
+h+='<button class="btn btn-p" style="width:auto" onclick="msApplyCat()">Apply category</button>';
+h+='<button class="btn btn-o" style="width:auto" onclick="msClearSel()">Clear selection</button>';
+h+='</div></div></div>';
+var allSel=list.length>0&&list.every(function(s){return msSel[s.id];});
+h+='<div class="card"><div class="tw"><table><thead><tr><th style="width:34px"><input type="checkbox" onclick="msSelAll(this.checked)"'+(allSel?' checked':'')+'></th><th>Code</th><th>Title / tags</th><th>Content</th><th>Manage</th></tr></thead><tbody>';
+if(!list.length)h+='<tr><td colspan="5" style="text-align:center;color:#6B7280;padding:20px">No items'+(q?' match your search':' yet')+'.</td></tr>';
 list.forEach(function(s){
-h+='<tr><td style="font-weight:700;color:#FBB227">'+s.code+'</td>';
-h+='<td>'+s.title+'<br><span style="font-size:.72rem;color:#6B7280">'+(s.programme?s.programme+' · ':'')+(s.cat||'—')+' · '+s.site+'</span></td>';
+h+='<tr><td><input type="checkbox" onclick="msToggle(\''+s.id+'\',this.checked)"'+(msSel[s.id]?' checked':'')+'></td>';
+h+='<td style="font-weight:700;color:#FBB227">'+s.code+'</td>';
+h+='<td>'+s.title+'<br><span style="font-size:.72rem;color:#6B7280">'+(s.programme?s.programme+' · ':'<span style="color:#e07a00;font-weight:600">No programme</span> · ')+(s.cat||'—')+' · '+s.site+'</span></td>';
 h+='<td><div style="display:flex;gap:4px;flex-wrap:wrap">'+(s.docName?bg('📄 Doc','green'):bg('No doc','gray'))+(s.vidName?bg('🎬 Video','green'):bg('No video','gray'))+(s.slidesName?bg('📊 Slides','green'):'')+bg(s.qs.length+' Qs',s.qs.length?'blue':'gray')+(s.ackRequired?bg('✍ Ack','gold'):'')+'</div></td>';
 h+='<td style="white-space:nowrap"><button class="btn btn-p btn-sm" onclick="manageContent(\''+s.id+'\')">⚙ Manage</button> <button class="btn btn-o btn-sm" onclick="openSop(\''+s.id+'\')">View</button> <button class="btn btn-d btn-sm" onclick="delSop(\''+s.id+'\')">Del</button></td></tr>';
 });
 h+='</tbody></table></div></div>';
 return h+'</div>';
 }
+function msToggle(id,on){ if(on)msSel[id]=true; else delete msSel[id]; render(); }
+function msSelAll(on){ var q=(typeof contentSearch!=='undefined'?contentSearch:'')||''; var lq=q.toLowerCase(); sops.forEach(function(s){ if(q&&((s.code||'')+' '+(s.title||'')+' '+(s.programme||'')+' '+(s.cat||'')).toLowerCase().indexOf(lq)<0)return; if(on)msSel[s.id]=true; else delete msSel[s.id]; }); render(); }
+function msApplyProg(){ var el=document.getElementById('ms-bulk-prog'); var pr=el?el.value:msBulkProg; if(!pr){alert('Choose a programme first.');return;} var ids=sops.filter(function(s){return msSel[s.id];}); if(!ids.length){alert('Tick at least one item first.');return;} ids.forEach(function(s){s.programme=pr;}); save(); render(); alert('Set programme "'+pr+'" on '+ids.length+' item'+(ids.length===1?'':'s')+'.'); }
+function msApplyCat(){ var el=document.getElementById('ms-bulk-cat'); var c=el?el.value.trim():msBulkCat; if(!c){alert('Enter or choose a category first.');return;} var ids=sops.filter(function(s){return msSel[s.id];}); if(!ids.length){alert('Tick at least one item first.');return;} ids.forEach(function(s){s.cat=c;}); save(); render(); alert('Set category "'+c+'" on '+ids.length+' item'+(ids.length===1?'':'s')+'.'); }
+function msClearSel(){ msSel={}; msBulkProg=''; msBulkCat=''; render(); }
 function renderQEditor(){
 var sop=sops.find(function(s){return s.id===qmSopId});if(!sop)return'';
 var h='<div class="mbg" onclick="if(event.target===this)closeQEditor()"><div class="mdl"><div class="mh"><h2>Questions — '+sop.code+' ('+sop.qs.length+')</h2><button class="btn btn-o btn-sm" onclick="closeQEditor()">Close</button></div><div class="mbd">';
@@ -1342,4 +1370,88 @@ function _medReadDates(id){ var d=document.getElementById('med-dt-'+id), x=docum
 function approveMed(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; var v=_medReadDates(id); if(!v.ex){alert('Enter an expiry date before approving the medical.');return;} e.medStatus='fit'; e.medDate=v.dt||''; e.medExpiry=v.ex; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL APPROVED', e.id+' · '+e.name, 'valid to '+fd(v.ex)); save(); render(); }
 function setMedUnfit(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; if(!confirm('Mark '+e.name+' as NOT FIT for duty? They will not be cleared for site.'))return; var v=_medReadDates(id); e.medStatus='unfit'; e.medDate=v.dt||''; e.medExpiry=v.ex||''; e.medApprovedBy=(user&&user.name)||'admin'; e.medApprovedAt=now(); if(typeof logAudit==='function')logAudit('MEDICAL NOT FIT', e.id+' · '+e.name, ''); save(); render(); }
 function clearMed(id){ var e=emps.find(function(x){return x.id===id;}); if(!e)return; e.medStatus=''; e.medDate=''; e.medExpiry=''; e.medApprovedBy=''; e.medApprovedAt=''; save(); render(); }
+
+// =====================  SITE CLEARANCE — final facilitator sign-off  =====================
+function clearanceStatus(eid){
+  var e=emps.find(function(x){return x.id===eid;})||{};
+  var onbItems=(typeof onboarding!=='undefined'?onboarding:[]).filter(function(o){return onbVisible(o,eid);});
+  var onbDone=onbItems.filter(function(o){return onbAcked(eid,o.id);}).length;
+  var onbOk=onbItems.length===0?true:(onbDone===onbItems.length);
+  var indOk=(typeof indCompetent==='function')?indCompetent(eid):true;
+  var req=(typeof empRequired==='function')?empRequired(eid):[];
+  var trainOk=req.length>0 && (typeof isCompetent==='function'?isCompetent(eid):false);
+  var medOk=(typeof medValid==='function')?medValid(eid):true;
+  var packOk=(typeof contractorCleared==='function')?contractorCleared(eid):true;
+  var allOk=onbOk&&indOk&&trainOk&&medOk&&packOk;
+  return {onbOk:onbOk,onbDone:onbDone,onbTot:onbItems.length,indOk:indOk,trainOk:trainOk,reqN:req.length,medOk:medOk,packOk:packOk,isCon:!!e.contractor,allOk:allOk};
+}
+function getClearance(eid){ if(typeof clearances==='undefined')return null; var l=clearances.filter(function(c){return c.eid===eid;}); if(!l.length)return null; return l.sort(function(a,b){return new Date(b.at)-new Date(a.at);})[0]; }
+function buildClearSnap(eid){
+  var req=(typeof empRequired==='function')?empRequired(eid):[];
+  var items=req.map(function(r){ var it=(typeof getIntervention==='function')?getIntervention(r.code):null; var s=compStatus(eid,r.code); return {code:r.code,name:it?it.name:r.code,at:(s.last?s.last.dt:''),validUntil:s.validUntil||''}; });
+  var e=emps.find(function(x){return x.id===eid;})||{};
+  return {job:(typeof empJobTitle==='function')?empJobTitle(eid):'',site:e.site||'',dept:e.dept||'',contractor:!!e.contractor,coName:e.coName||'',medExpiry:e.medExpiry||'',training:items};
+}
+function _clrTick(ok,label){ return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:.78rem;font-weight:600;color:'+(ok?'#15803d':'#b91c1c')+'">'+(ok?'✓':'✗')+' '+label+'</span>'; }
+function renderClearance(){
+  var isTrain=user&&(user.role==='training');
+  var base = isTrain ? (typeof scopedEmps==='function'?scopedEmps(user.mgr):emps) : emps;
+  var list = (typeof filterEmps==='function') ? filterEmps(base, clrSites, clrDepts, clrSearch) : base;
+  list = (typeof contractorFilter==='function') ? contractorFilter(list,'clrType','clrCo') : list;
+  var h='<div class="topbar"><h1>Site Clearance</h1><span style="font-size:.78rem;color:#6B7280">Final authorisation for site access</span></div><div class="pc">';
+  h+='<div class="card"><div class="cb"><b>Final sign-off gate.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">A person can only be <b>authorised for site</b> once <b>every</b> requirement is complete — onboarding, Mine Induction, all required training, a valid medical, and (for contractors) an approved contractor pack. The sign-off button stays locked until then. When you authorise a person, your name and the date are recorded and a one-page <b>Clearance Certificate</b> is produced for HR and the employee file — HR uses it to finalise the physical access card.</p></div></div>';
+  if(typeof filterBar==='function')h+=filterBar(base,'clrSites','clrDepts','clrSearch');
+  if(typeof contractorFilterRow==='function')h+=contractorFilterRow('clrType','clrCo');
+  var nReady=list.filter(function(e){return clearanceStatus(e.id).allOk;}).length;
+  var nSigned=list.filter(function(e){return !!getClearance(e.id);}).length;
+  h+='<div class="sg"><div class="sc bl"><div class="l">People</div><div class="v">'+list.length+'</div></div><div class="sc gd"><div class="l">Ready to authorise</div><div class="v">'+nReady+'</div></div><div class="sc gn"><div class="l">Authorised</div><div class="v">'+nSigned+'</div></div></div>';
+  h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>Name</th><th>Requirements</th><th>Overall</th><th>Authorisation</th></tr></thead><tbody>';
+  list.sort(function(a,b){ var ra=clearanceStatus(a.id).allOk?0:1, rb=clearanceStatus(b.id).allOk?0:1; if(ra!==rb)return ra-rb; return (a.name||'').localeCompare(b.name||''); });
+  list.forEach(function(e){
+    var st=clearanceStatus(e.id); var clr=getClearance(e.id);
+    h+='<tr><td style="font-weight:700;color:#FBB227">'+e.id+'</td><td><b>'+e.name+'</b><br><span style="font-size:.72rem;color:#6B7280">'+(e.contractor?'Contractor'+(e.coName?' · '+e.coName:''):'Employee')+' · '+e.site+'</span></td>';
+    h+='<td><div style="display:flex;flex-direction:column;gap:2px">'+_clrTick(st.onbOk,'Onboarding'+(st.onbTot?' ('+st.onbDone+'/'+st.onbTot+')':''))+_clrTick(st.indOk,'Mine Induction')+_clrTick(st.trainOk,'Training'+(st.reqN?'':' — none set'))+_clrTick(st.medOk,'Medical')+(st.isCon?_clrTick(st.packOk,'Contractor pack'):'')+'</div></td>';
+    h+='<td>'+(st.allOk?bg('READY','green'):bg('Outstanding','gold'))+'</td>';
+    if(clr){ h+='<td style="white-space:nowrap"><div style="font-size:.74rem;color:#15803d;font-weight:700">✓ Authorised</div><div style="font-size:.7rem;color:#6B7280">by '+(clr.by||'—')+'<br>'+fd(clr.at)+'</div><button class="btn btn-p btn-sm" style="margin-top:4px" onclick="printClearance(\''+e.id+'\')">🖨 Certificate</button>'+(st.allOk?' <button class="btn btn-o btn-sm" onclick="signOffClearance(\''+e.id+'\')">Re-sign</button>':'')+'</td>'; }
+    else if(st.allOk){ h+='<td><button class="btn btn-gn btn-sm" onclick="signOffClearance(\''+e.id+'\')">✓ Sign off &amp; authorise</button></td>'; }
+    else { h+='<td><button class="btn btn-o btn-sm" disabled style="opacity:.45;cursor:not-allowed">🔒 Locked</button></td>'; }
+    h+='</tr>';
+  });
+  if(!list.length)h+='<tr><td colspan="5" style="text-align:center;color:#6B7280;padding:20px">No people match your filters.</td></tr>';
+  h+='</tbody></table></div></div></div>';
+  return h;
+}
+function signOffClearance(eid){
+  var st=clearanceStatus(eid);
+  if(!st.allOk){ alert('Sign-off is locked — this person still has outstanding requirements. All items must be complete first.'); return; }
+  var e=emps.find(function(x){return x.id===eid;}); if(!e)return;
+  if(!confirm('Authorise '+e.name+' for site access?\n\nThis records your sign-off (name + date) and produces the HR clearance certificate.')) return;
+  clearances.push({id:gid(),eid:eid,name:e.name,by:(user&&user.name)||'Facilitator',byRole:(user&&user.role)||'',at:now(),snap:buildClearSnap(eid)});
+  if(typeof logAudit==='function')logAudit('SITE CLEARANCE', e.id+' · '+e.name, 'authorised by '+((user&&user.name)||''));
+  save(); render();
+}
+function printClearance(eid){
+  var e=emps.find(function(x){return x.id===eid;}); if(!e)return;
+  var clr=getClearance(eid); var snap=(clr&&clr.snap)?clr.snap:buildClearSnap(eid);
+  var st=clearanceStatus(eid);
+  var trows=(snap.training||[]).map(function(t){return '<tr><td>'+t.code+'</td><td>'+t.name+'</td><td>'+(t.at?fd(t.at):'-')+'</td><td>'+(t.validUntil?fd(t.validUntil):'no expiry')+'</td></tr>';}).join('')||'<tr><td colspan="4" style="text-align:center;color:#666">No required training on record</td></tr>';
+  function line(ok,label,detail){ return '<tr><td style="width:22px">'+(ok?'✓':'✗')+'</td><td><b>'+label+'</b></td><td>'+(detail||'')+'</td></tr>'; }
+  var reqRows=line(st.onbOk,'Company &amp; HR onboarding acknowledged', st.onbTot?(st.onbDone+' of '+st.onbTot+' acknowledged'):'—')
+    + line(st.indOk,'Mine Induction complete','Legal induction gate')
+    + line(st.trainOk,'All required job training complete',(snap.training||[]).length+' required item(s)')
+    + line(st.medOk,'Medical Certificate of Fitness valid', snap.medExpiry?('valid until '+fd(snap.medExpiry)):'—')
+    + (snap.contractor?line(st.packOk,'Contractor company pack approved', snap.coName||''):'');
+  var w=window.open('','_blank'); if(!w){alert('Please allow pop-ups to print the certificate.');return;}
+  w.document.write('<!DOCTYPE html><html><head><title>'+BRAND.name+' — Site Clearance — '+e.name+'</title><style>body{font-family:Arial;padding:30px;color:#243034;max-width:800px;margin:0 auto}h1{font-size:19px;margin:0}h2{font-size:14px;margin:18px 0 6px;border-bottom:2px solid #FBB227;padding-bottom:3px}.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #243034;padding-bottom:10px}.meta td{padding:3px 8px;font-size:12px}table.g{width:100%;border-collapse:collapse;margin-top:6px;font-size:12px}table.g th,table.g td{border:1px solid #ccc;padding:6px 8px;text-align:left}table.g th{background:#243034;color:#fff}.chk td{padding:5px 6px;font-size:12.5px;border-bottom:1px solid #eee}.stamp{margin-top:18px;padding:12px 14px;background:#e7f7ec;border:1px solid #86efac;border-radius:8px;font-size:13px}.sig{margin-top:26px;display:flex;gap:40px}.sig div{flex:1;border-top:1px solid #999;padding-top:5px;font-size:11px;color:#555}.ftr{margin-top:20px;font-size:10.5px;color:#666;border-top:1px solid #ddd;padding-top:8px}</style></head><body>');
+  w.document.write('<div class="hd"><div><h1>'+BRAND.name+'</h1><div style="font-size:12px;color:#666">'+(BRAND.legal||'')+'</div></div><div style="text-align:right"><div style="font-size:15px;font-weight:bold">SITE ACCESS CLEARANCE</div><div style="font-size:11px;color:#666">Generated '+fd(now())+'</div></div></div>');
+  w.document.write('<h2>Person</h2><table class="meta"><tr><td><b>Name</b></td><td>'+e.name+'</td><td><b>Employee No.</b></td><td>'+e.id+'</td></tr><tr><td><b>Site</b></td><td>'+e.site+'</td><td><b>Department</b></td><td>'+(e.dept||'-')+'</td></tr><tr><td><b>Job title</b></td><td>'+(snap.job||'-')+'</td><td><b>Type</b></td><td>'+(e.contractor?'Contractor'+(e.coName?' ('+e.coName+')':''):'Employee')+'</td></tr></table>');
+  w.document.write('<h2>Clearance requirements</h2><table style="width:100%" class="chk"><tbody>'+reqRows+'</tbody></table>');
+  w.document.write('<h2>Training completed</h2><table class="g"><thead><tr><th>Code</th><th>Intervention</th><th>Completed</th><th>Valid until</th></tr></thead><tbody>'+trows+'</tbody></table>');
+  if(clr){ w.document.write('<div class="stamp"><b>✓ AUTHORISED FOR SITE</b><br>Signed off by <b>'+(clr.by||'—')+'</b>'+(clr.byRole==='training'?' (Training Facilitator)':'')+' on <b>'+fd(clr.at)+'</b>. All requirements above were complete at the time of sign-off.</div>'); }
+  else { w.document.write('<div style="margin-top:18px;padding:12px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:13px"><b>NOT YET AUTHORISED</b> — this person has outstanding requirements and has not been signed off.</div>'); }
+  w.document.write('<h2>For HR — access control</h2><p style="font-size:12px">The above person has met all training, medical and contractor requirements and has been authorised by the training facilitator. HR to finalise physical access / issue access card and retain this certificate in the employee file.</p>');
+  w.document.write('<div class="sig"><div>Training Facilitator — signature &amp; date</div><div>HR — access authorised, signature &amp; date</div></div>');
+  w.document.write('<div class="ftr">'+BRAND.name+' — official site access clearance record. Retain for MHSA compliance and audit.</div></body></html>');
+  w.document.close(); w.focus(); w.print();
+}
 
