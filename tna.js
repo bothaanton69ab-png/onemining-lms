@@ -18,11 +18,13 @@ var tnaFilterProg = 'all', tnaSearch = '', jpEdit = null, compEmp = null, compSe
 var compSites=[], compDepts=[], mgrSites=[], mgrDepts=[], mgrSearch='', expSites=[], expDepts=[], expSearch='';
 var libSearch='', jpSearch='', sopArchive=[];
 var crSites=[], crDepts=[], crStatuses=[];
-var crType='all', crMgr=[];
+var crType='all', crMgr=[], crCo=[];
 var progList=[], catList=[], taxEditP=null, taxEditC=null;
 var iaInts=[], iaSites=[], iaDepts=[], iaEmps=[];
 var meType='all';
 var meSites=[], meDepts=[], meSearch='', erSites=[], erDepts=[], erSearch='';
+var erType='all', erCo=[];
+var compType='all', compCo=[], exType='all', exCo=[], opType='all', opCo=[];
 function getDueBy(eid,code){ var a=xassigns.filter(function(x){return x.eid===eid&&x.code===code&&x.type==='add'&&x.active!==false&&x.dueBy;}); return a.length?a[0].dueBy:null; }
 function empCompClass(eid){
   var req=empRequired(eid);
@@ -41,6 +43,7 @@ function complianceBase(){
     if(crType==='emp'&&e.contractor) return false;
     if(crType==='con'&&!e.contractor) return false;
     if(crMgr.length&&crMgr.indexOf(e.respMgr||'')<0) return false;
+    if(crCo.length&&crCo.indexOf(e.coName||'')<0) return false;
     return true;
   }).map(function(e){ return {e:e, c:empCounts(e.id), cls:empCompClass(e.id)}; });
 }
@@ -74,8 +77,10 @@ function renderComplianceReport(){
   [['all','All'],['emp','Employees'],['con','Contractors']].forEach(function(t){ var sel=crType===t[0]; h+='<span style="cursor:pointer;display:inline-flex;padding:7px 13px;border-radius:20px;font-size:.82rem;font-weight:600;margin:0 8px 8px 0;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="crType=\''+t[0]+'\';render()">'+t[1]+'</span>'; });
   h+='</div>';
   if(typeof managers!=='undefined'&&managers.length){ h+='<div style="margin-top:12px"><div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;color:#9099a3;text-transform:uppercase;margin-bottom:7px">Responsible manager</div>'; managers.forEach(function(m){ var sel=crMgr.indexOf(m.id)>=0; h+='<span style="cursor:pointer;display:inline-flex;padding:7px 13px;border-radius:20px;font-size:.82rem;font-weight:600;margin:0 8px 8px 0;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="crToggleMgr(\''+m.id+'\')">'+m.name+'</span>'; }); h+='</div>'; }
+  var _cos=[]; emps.forEach(function(e){ if(e.contractor&&e.coName&&_cos.indexOf(e.coName)<0)_cos.push(e.coName); }); _cos.sort();
+  if(_cos.length){ h+='<div style="margin-top:12px"><div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;color:#9099a3;text-transform:uppercase;margin-bottom:7px">Contractor company</div>'; _cos.forEach(function(co){ var sel=crCo.indexOf(co)>=0; h+='<span style="cursor:pointer;display:inline-flex;padding:7px 13px;border-radius:20px;font-size:.82rem;font-weight:600;margin:0 8px 8px 0;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="crToggleCo(\''+encodeURIComponent(co)+'\')">'+co+'</span>'; }); h+='</div>'; }
   h+='</div></div>';
-  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="printCompliance()">🖨 Print / Save as PDF</button><button class="btn btn-o" style="width:auto" onclick="crSites=[];crDepts=[];crStatuses=[];crType=\'all\';crMgr=[];render()">Clear filters</button></div>';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-p" style="width:auto" onclick="printCompliance()">🖨 Print / Save as PDF</button><button class="btn btn-o" style="width:auto" onclick="crSites=[];crDepts=[];crStatuses=[];crType=\'all\';crMgr=[];crCo=[];render()">Clear filters</button></div>';
   h+='</div></div>';
   var base=complianceBase();
   var cc={competent:0,notcompetent:0,notcompleted:0,noset:0}; base.forEach(function(r){cc[r.cls]++;});
@@ -547,8 +552,9 @@ function renderCompetence(){
   if(compEmp) return renderCompEmp(compEmp);
   var h='<div class="topbar"><h1>Competence</h1><span style="font-size:.78rem;color:#6B7280">Link employees to a job title to drive their required training</span></div><div class="pc">';
   h+=filterBar(emps,'compSites','compDepts','compSearch');
+  h+=contractorFilterRow('compType','compCo');
   h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>Name</th><th>Site</th><th>Job Title</th><th>Induction</th><th>Required</th><th>Outstanding</th><th>Not Yet Competent</th><th>Expiring</th><th>Expired</th><th></th></tr></thead><tbody>';
-  var list=filterEmps(emps, compSites, compDepts, compSearch);
+  var list=contractorFilter(filterEmps(emps, compSites, compDepts, compSearch),'compType','compCo');
   list.forEach(function(e){
     var jt=empJobTitle(e.id); var c=empCounts(e.id);
     h+='<tr><td style="font-weight:700;color:#FBB227">'+e.id+'</td><td style="font-weight:600">'+e.name+'</td><td style="font-size:.8rem">'+e.site+'</td>';
@@ -690,6 +696,7 @@ function expiryRowsFiltered(){
     if(!inArrOrAll(expSites, r.site)) return false;
     if(!inArrOrAll(expDepts, r.dept||'')) return false;
     if(expSearch){ var q=expSearch.toLowerCase(); if((r.eid+' '+(r.name||'')).toLowerCase().indexOf(q)<0) return false; }
+    var _et=window['exType']||'all',_ec=window['exCo']||[]; if(_et!=='all'||_ec.length){ var _e=emps.find(function(x){return x.id===r.eid;}); if(_et==='employee'&&_e&&_e.contractor)return false; if(_et==='contractor'&&(!_e||!_e.contractor))return false; if(_ec.length&&(!_e||_ec.indexOf(_e.coName||'')<0))return false; }
     return true;
   });
 }
@@ -700,6 +707,7 @@ function renderExpiry(){
   rows.forEach(function(r){ b[bucket(r)]++; });
   var h='<div class="topbar"><h1>Expiry & Renewals</h1><button class="btn btn-p btn-sm" onclick="dlExpiryCSV()">📥 Export CSV</button></div><div class="pc">';
   h+=filterBar(emps,'expSites','expDepts','expSearch');
+  h+=contractorFilterRow('exType','exCo');
   h+='<div class="sg"><div class="sc rd"><div class="l">Not Yet Competent</div><div class="v">'+b['Not Yet Competent']+'</div></div>'+
      '<div class="sc rd"><div class="l">Expired</div><div class="v">'+b['Expired']+'</div></div>'+
      '<div class="sc gd"><div class="l">Due ≤1 day</div><div class="v">'+b['Due ≤1 day']+'</div></div>'+
@@ -1078,3 +1086,14 @@ function taxToggle(kind,id){ var o=_taxList(kind).find(function(x){return x.id==
 function taxDel(kind,id){ if(!confirm('Delete this '+(kind==='prog'?'programme':'category')+'? Items already tagged with it keep the text; it just stops appearing in the dropdowns.'))return; if(kind==='prog')progList=progList.filter(function(x){return x.id!==id;}); else catList=catList.filter(function(x){return x.id!==id;}); saveTNA().then(function(){render();}); }
 function taxMove(kind,id,dir){ var items=_taxList(kind).slice().sort(_byOrder); var i=items.findIndex(function(x){return x.id===id;}); var j=i+dir; if(j<0||j>=items.length)return; var a=items[i],b=items[j]; var ao=(a.order||0),bo=(b.order||0); a.order=bo; b.order=ao; saveTNA().then(function(){render();}); }
 function crToggleMgr(id){ var i=crMgr.indexOf(id); if(i>=0)crMgr.splice(i,1); else crMgr.push(id); render(); }
+function crToggleCo(v){ var c=decodeURIComponent(v); var i=crCo.indexOf(c); if(i>=0)crCo.splice(i,1); else crCo.push(c); render(); }
+function coToggle(g,v){ var c=decodeURIComponent(v); var a=window[g]||[]; var i=a.indexOf(c); if(i>=0)a.splice(i,1); else a.push(c); window[g]=a; render(); }
+function contractorFilterRow(typeVar,coVar){
+  var ty=window[typeVar]||'all'; var coArr=window[coVar]||[];
+  var h='<div style="margin:-6px 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="font-size:.78rem;color:#6B7280">Show:</span>';
+  [['all','All'],['employee','Employees'],['contractor','Contractors']].forEach(function(t){ var sel=ty===t[0]; h+='<span style="cursor:pointer;padding:5px 12px;border-radius:16px;font-size:.8rem;font-weight:600;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="window[\''+typeVar+'\']=\''+t[0]+'\';render()">'+t[1]+'</span>'; });
+  var cos=[]; emps.forEach(function(e){ if(e.contractor&&e.coName&&cos.indexOf(e.coName)<0)cos.push(e.coName); }); cos.sort();
+  if(cos.length){ h+='<span style="font-size:.78rem;color:#6B7280;margin-left:6px">Contractor:</span>'; cos.forEach(function(co){ var sel=coArr.indexOf(co)>=0; h+='<span style="cursor:pointer;padding:5px 12px;border-radius:16px;font-size:.8rem;font-weight:600;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="coToggle(\''+coVar+'\',\''+encodeURIComponent(co)+'\')">'+co+'</span>'; }); }
+  return h+'</div>';
+}
+function contractorFilter(list,typeVar,coVar){ var ty=window[typeVar]||'all'; var coArr=window[coVar]||[]; return list.filter(function(e){ if(ty==='employee'&&e.contractor)return false; if(ty==='contractor'&&!e.contractor)return false; if(coArr.length&&coArr.indexOf(e.coName||'')<0)return false; return true; }); }

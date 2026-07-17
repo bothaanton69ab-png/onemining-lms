@@ -633,8 +633,13 @@ return h+'</tbody></table></div></div></div>';
 function renderEmpRec(){
 var h='<div class="topbar"><h1>Training Records</h1></div><div class="pc">';
 h+=filterBar(emps,'erSites','erDepts','erSearch');
+h+='<div style="margin:-6px 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="font-size:.78rem;color:#6B7280">Show:</span>'+['all','employee','contractor'].map(function(t){var lbl=t==='all'?'All':(t==='employee'?'Employees':'Contractors');var sel=erType===t;return '<span style="cursor:pointer;padding:5px 12px;border-radius:16px;font-size:.8rem;font-weight:600;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="erType=\''+t+'\';render()">'+lbl+'</span>';}).join('');
+var _ercos=[]; emps.forEach(function(e){ if(e.contractor&&e.coName&&_ercos.indexOf(e.coName)<0)_ercos.push(e.coName); }); _ercos.sort();
+if(_ercos.length){ h+='<span style="font-size:.78rem;color:#6B7280;margin-left:6px">Contractor:</span>'; _ercos.forEach(function(co){ var sel=erCo.indexOf(co)>=0; h+='<span style="cursor:pointer;padding:5px 12px;border-radius:16px;font-size:.8rem;font-weight:600;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="erToggleCo(\''+encodeURIComponent(co)+'\')">'+co+'</span>'; }); }
+h+='</div>';
 h+='<div class="card"><div class="tw"><table><thead><tr><th>Emp#</th><th>ID</th><th>Name</th><th>Gender</th><th>Site</th><th>SOP</th><th>1st</th><th>2nd</th><th>3rd</th><th>Status</th><th>Proof</th></tr></thead><tbody>';
-filterEmps(emps,erSites,erDepts,erSearch).forEach(function(emp){
+var erList=filterEmps(emps,erSites,erDepts,erSearch); if(erType==='employee')erList=erList.filter(function(e){return !e.contractor;}); else if(erType==='contractor')erList=erList.filter(function(e){return e.contractor;}); if(erCo.length)erList=erList.filter(function(e){return erCo.indexOf(e.coName||'')>=0;});
+erList.forEach(function(emp){
 var ea=getEmpAssigns(emp.id);
 if(!ea.length){h+='<tr><td style="font-weight:600">'+emp.id+'</td><td style="font-size:.78rem">'+emp.idn+'</td><td>'+emp.name+'</td><td>'+emp.gender+'</td><td>'+emp.site+'</td><td colspan="5" style="text-align:center;color:#6B7280">No training assigned</td><td>-</td></tr>';return;}
 ea.forEach(function(a,si){var sc=a.sc;var sr=getAtt(emp.id,sc);
@@ -1092,16 +1097,17 @@ var items=onboarding.slice().sort(function(a,b){return (a.order||0)-(b.order||0)
 var h='<div class="topbar"><h1>Onboarding Proof</h1></div><div class="pc">';
 h+='<div class="card"><div class="cb"><b>Acknowledgement register.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">Proof of who has received and acknowledged each company / HR policy, with the date. Click a policy to see the full list and print it as evidence.</p></div></div>';
 if(!items.length)return h+'<div class="card"><div class="cb" style="text-align:center;color:#6B7280;padding:24px">No onboarding items yet.</div></div></div>';
+h+=contractorFilterRow('opType','opCo');
 h+='<div class="card"><div class="ch"><h3>Overview</h3></div><div class="tw"><table><thead><tr><th>Policy / Document</th><th>Applies to</th><th>Acknowledged</th><th>Outstanding</th><th>%</th><th></th></tr></thead><tbody>';
 items.forEach(function(o){
-var appl=emps.filter(function(e){return onbVisible(o,e.id);});
+var appl=contractorFilter(emps.filter(function(e){return onbVisible(o,e.id);}),'opType','opCo');
 var ackd=appl.filter(function(e){return onbAcked(e.id,o.id);}).length;
 var pct=appl.length?Math.round(ackd/appl.length*100):0;
 h+='<tr><td style="font-weight:600">'+o.title+(o.active===false?' '+bg('Off','gray'):'')+'</td><td style="font-size:.78rem">'+onbAudienceLabel(o)+'</td><td style="font-weight:700">'+ackd+'</td><td>'+(appl.length-ackd)+'</td><td>'+bg(pct+'%',pct>=100?'green':pct>0?'gold':'gray')+'</td><td><button class="btn btn-o btn-sm" onclick="onbProofSel=\''+o.id+'\';render()">View</button></td></tr>';
 });
 h+='</tbody></table></div></div>';
 if(onbProofSel){var o=onboarding.find(function(x){return x.id===onbProofSel;});
-if(o){var appl=emps.filter(function(e){return onbVisible(o,e.id);});
+if(o){var appl=contractorFilter(emps.filter(function(e){return onbVisible(o,e.id);}),'opType','opCo');
 appl.sort(function(a,b){return (onbAcked(b.id,o.id)?1:0)-(onbAcked(a.id,o.id)?1:0);});
 h+='<div class="card"><div class="ch" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3>'+o.title+' — acknowledgement list</h3><div style="display:flex;gap:8px"><button class="btn btn-p btn-sm" onclick="printOnbProof(\''+o.id+'\')">🖨 Print / Save PDF</button><button class="btn btn-o btn-sm" onclick="onbProofSel=null;render()">Close</button></div></div><div class="tw"><table><thead><tr><th>Emp#</th><th>Name</th><th>Site</th><th>Dept</th><th>Status</th><th>Date acknowledged</th></tr></thead><tbody>';
 appl.forEach(function(e){var ok=onbAcked(e.id,o.id);var rec=onbAckRec(e.id,o.id);
@@ -1113,7 +1119,7 @@ return h+'</div>';
 }
 function printOnbProof(oid){
 var o=onboarding.find(function(x){return x.id===oid;}); if(!o)return;
-var appl=emps.filter(function(e){return onbVisible(o,e.id);});
+var appl=contractorFilter(emps.filter(function(e){return onbVisible(o,e.id);}),'opType','opCo');
 appl.sort(function(a,b){return (onbAcked(b.id,o.id)?1:0)-(onbAcked(a.id,o.id)?1:0);});
 var rows=appl.map(function(e){var ok=onbAcked(e.id,o.id);var rec=onbAckRec(e.id,o.id);return '<tr><td>'+e.id+'</td><td>'+e.name+'</td><td>'+e.site+'</td><td>'+(e.dept||'-')+'</td><td>'+(ok?'Acknowledged':'Outstanding')+'</td><td>'+(ok?fd(rec.at):'-')+'</td></tr>';}).join('');
 var ackd=appl.filter(function(e){return onbAcked(e.id,o.id);}).length;
@@ -1245,3 +1251,4 @@ return h;
 function sopAcked(eid,sc){ return acks.some(function(a){return a.eid===eid&&a.oid==='SOP:'+sc;}); }
 function sopAckRec(eid,sc){ return acks.find(function(a){return a.eid===eid&&a.oid==='SOP:'+sc;}); }
 async function acknowledgeSop(sc){ var cb=document.getElementById('sop-ack'); if(!cb||!cb.checked){alert('Please tick the acknowledgement to complete the module.');return;} if(sopAcked(user.id,sc)){render();return;} acks.push({id:gid(),eid:user.id,oid:'SOP:'+sc,at:now()}); var ok=await save(); if(!ok)alert('⚠️ Save may have failed — please check your connection and try again.'); render(); }
+function erToggleCo(v){ var c=decodeURIComponent(v); var i=erCo.indexOf(c); if(i>=0)erCo.splice(i,1); else erCo.push(c); render(); }
