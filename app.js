@@ -158,7 +158,7 @@ async function init() {
         render();
     } catch(e) {
         console.error('Failed to load data:', e);
-        document.getElementById('app').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Arial;background:#243034;color:#fff"><h1 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">One <span style="color:#FBB227">Mining</span></h1><p style="color:#EF4444">Failed to connect to database. Please check your internet connection and try again.</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 24px;background:#FBB227;border:none;border-radius:8px;font-weight:600;cursor:pointer">Retry</button></div>';
+        document.getElementById('app').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Arial;background:#243034;color:#fff"><h1 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">'+BRAND.name+'</h1><p style="color:#EF4444">Failed to connect to database. Please check your internet connection and try again.</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 24px;background:#FBB227;border:none;border-radius:8px;font-weight:600;cursor:pointer">Retry</button></div>';
     }
 }
 
@@ -174,7 +174,7 @@ var el=document.getElementById('app');
 if(!user){el.innerHTML=renderLogin();return}
 if(user.role==='manager'||user.role==='training'){el.innerHTML=renderManagerShell();return}
 var isA=user.role==='admin';
-var sb='<aside class="sb"><div class="sb-brand"><h2>One <span class="gold">Mining</span></h2><p>Training LMS · '+TENANT_LABEL+'</p></div><div class="sb-nav">';
+var sb='<aside class="sb"><div class="sb-brand"><div class="sb-logo"><img src="'+BRAND.logo+'" alt=""></div><h2>'+BRAND.name+'</h2><p>'+BRAND.tagline+'</p></div><div class="sb-nav">';
 sb+='<div class="ni'+(page==='dashboard'&&!activeSop?' a':'')+'" onclick="goPage(\'dashboard\')">📊 Dashboard</div>';
 sb+='<div class="ni'+(page==='library'||activeSop?' a':'')+'" onclick="goPage(\'library\')">📚 My Training</div>';
 if(!isA)sb+='<div class="ni'+(page==='myres'?' a':'')+'" onclick="goPage(\'myres\')">📋 My Results</div>';
@@ -232,7 +232,7 @@ el.innerHTML='<div class="app">'+sb+mc+'</div>';
 }
 
 function renderLogin(){
-return'<div class="login-bg"><div class="login-card"><div class="login-logo"><h1>One <span class="gold">Mining</span></h1><p>Training Management System</p></div>'+
+return'<div class="login-bg"><div class="login-card"><div class="login-logo"><img src="'+BRAND.logo+'" class="login-logo-img" alt=""><p>Training Management System</p></div>'+
 '<div class="fg"><label>Login as</label><select id="login-mode" onchange="loginModeChange()" style="width:100%;padding:10px 12px;border:2px solid #e2e5e9;border-radius:8px"><option value="emp">Employee</option><option value="manager">Manager / Training Dept</option><option value="admin">Admin</option></select></div>'+
 '<div id="emp-fields" class="fg"><label id="login-eid-lbl">Employee Number</label><input id="login-eid" placeholder="e.g. OM001"></div>'+
 '<div class="fg"><label id="login-lbl">PIN</label><input type="password" id="login-pin" onkeydown="if(event.key===\'Enter\')doLogin()"></div>'+
@@ -826,7 +826,7 @@ if(!wrongs){var pr=res.find(function(r){return r.eid===eid&&r.sc===sc&&r.pass&&r
 var emp=emps.find(function(e){return e.id===eid});var sop=sops.find(function(s){return s.code===sc});if(!emp||!sop)return;
 var w=window.open('','_blank');
 w.document.write('<!DOCTYPE html><html><head><title>Assessment - '+emp.name+'</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;color:#243034;padding:40px;max-width:800px;margin:0 auto}.hdr{text-align:center;padding-bottom:24px;border-bottom:4px solid #FBB227;margin-bottom:30px}.hdr h1{font-size:1.8rem;font-weight:800}.gold{color:#FBB227}.hdr p{font-size:.85rem;color:#6B7280;margin-top:4px}.ttl{text-align:center;margin:24px 0;font-size:1.3rem;font-weight:700;text-transform:uppercase;letter-spacing:2px}.rb{text-align:center;margin:24px 0;padding:20px;border-radius:12px}.rb.ps{background:rgba(34,197,94,.1);border:2px solid #22C55E}.rb.fl{background:rgba(239,68,68,.1);border:2px solid #EF4444}.rb .s{font-size:2.5rem;font-weight:800}.rb.ps .s{color:#22C55E}.rb.fl .s{color:#EF4444}.rb .st{font-size:1.2rem;font-weight:700;text-transform:uppercase;margin-top:4px}table{width:100%;border-collapse:collapse;margin:20px 0}td{padding:10px 16px;border:1px solid #e5e7eb;font-size:.9rem}td:first-child{font-weight:700;background:#f8f9fa;width:200px;text-transform:uppercase;font-size:.78rem;color:#6B7280}.sig{margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:40px}.sbox{border-top:2px solid #243034;padding-top:8px;margin-top:40px}.sbox p{font-size:.8rem;color:#6B7280}.ftr{margin-top:40px;padding-top:16px;border-top:2px solid #FBB227;text-align:center;font-size:.75rem;color:#6B7280}.wm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:6rem;font-weight:800;opacity:.04;pointer-events:none}</style></head><body>');
-w.document.write('<div class="wm">ONE MINING</div><div class="hdr"><h1>One <span class="gold">Mining</span></h1><p>Training Management System</p></div>');
+w.document.write('<div class="wm">'+BRAND.name.toUpperCase()+'</div><div class="hdr"><h1>'+BRAND.name+'</h1><p>Training Management System</p></div>');
 w.document.write('<div class="ttl">'+(pass?'Certificate of Competency':'Assessment Record')+'</div>');
 w.document.write('<div class="rb '+(pass?'ps':'fl')+'"><div class="s">'+pct+'%</div><div class="st">'+(pass?'COMPETENT':'NOT YET COMPETENT')+'</div></div>');
 w.document.write('<table><tr><td>Employee Name</td><td>'+emp.name+'</td></tr><tr><td>Employee Number</td><td>'+emp.id+'</td></tr><tr><td>ID Number</td><td>'+emp.idn+'</td></tr><tr><td>Gender</td><td>'+emp.gender+'</td></tr><tr><td>Site</td><td>'+emp.site+'</td></tr><tr><td>Department</td><td>'+emp.dept+'</td></tr></table>');
@@ -835,7 +835,7 @@ w.document.write('<table><tr><td>Score</td><td>'+score+'/'+total+' ('+pct+'%)</t
 if(pass&&wrongs&&wrongs.length){w.document.write('<div style="margin:24px 0;border-left:4px solid #FBB227;padding:16px 20px;background:#FFFBEB;border-radius:0 8px 8px 0;page-break-inside:avoid"><h3 style="font-size:1rem;font-weight:700;color:#243034;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px">Review — Incorrect Answers</h3><p style="font-size:.82rem;color:#6B7280;margin-bottom:14px">You passed, but review the following questions to strengthen your understanding:</p>');wrongs.forEach(function(wr){w.document.write('<div style="padding:10px 0;border-bottom:1px solid #F0E6C8"><div style="font-weight:600;color:#243034;font-size:.88rem;margin-bottom:4px">Q'+wr.n+'. '+wr.t+'</div><div style="font-size:.82rem;color:#EF4444;margin-bottom:2px">✗ Your answer: '+wr.yours+'</div><div style="font-size:.82rem;color:#22C55E;font-weight:600">✓ Correct answer: '+wr.correct+'</div></div>')});w.document.write('</div>');}
 w.document.write('<div class="sig"><div><div class="sbox"><p>Employee Signature</p></div><p style="margin-top:8px;font-size:.82rem">'+emp.name+'</p></div><div><div class="sbox"><p>Assessor Signature</p></div><p style="margin-top:8px;font-size:.82rem">Name: _________________________</p></div></div>');
 w.document.write('<div class="sig"><div><div class="sbox"><p>Date</p></div></div><div><div class="sbox"><p>Training Manager</p></div></div></div>');
-w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training Management System</p><p>'+sop.code+' | '+sop.rev+' | Generated '+fd(now())+'</p><p style="margin-top:6px">Official proof of assessment. Retain for compliance.</p></div></body></html>');
+w.document.write('<div class="ftr"><p><b>'+BRAND.legal+'</b> — Training Management System</p><p>'+sop.code+' | '+sop.rev+' | Generated '+fd(now())+'</p><p style="margin-top:6px">Official proof of assessment. Retain for compliance.</p></div></body></html>');
 w.document.close();setTimeout(function(){w.print()},500);}
 
 function dashReport(){
@@ -846,8 +846,8 @@ else dlReport('full');
 function dlReport(type,id){
 var w=window.open('','_blank');
 var css='*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;color:#243034;padding:30px;font-size:12px}.hdr{text-align:center;padding-bottom:16px;border-bottom:4px solid #FBB227;margin-bottom:24px}.hdr h1{font-size:1.5rem;font-weight:800}.gold{color:#FBB227}.hdr p{font-size:.8rem;color:#6B7280}h2{font-size:1rem;font-weight:700;margin:20px 0 10px;border-bottom:2px solid #FBB227;padding-bottom:6px}table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11px}th{background:#243034;color:#fff;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase}td{padding:8px 10px;border:1px solid #e5e7eb}.pass{color:#22C55E;font-weight:700}.fail{color:#EF4444;font-weight:700}.ftr{margin-top:30px;padding-top:12px;border-top:2px solid #FBB227;text-align:center;font-size:10px;color:#6B7280}@media print{body{padding:15px}}';
-w.document.write('<!DOCTYPE html><html><head><title>One Mining Report</title><style>'+css+'</style></head><body>');
-w.document.write('<div class="hdr"><h1>One <span class="gold">Mining</span></h1><p>Training Management System — Compliance Report</p><p style="margin-top:4px">Generated: '+fd(now())+'</p></div>');
+w.document.write('<!DOCTYPE html><html><head><title>'+BRAND.name+' Report</title><style>'+css+'</style></head><body>');
+w.document.write('<div class="hdr"><h1>'+BRAND.name+'</h1><p>Training Management System — Compliance Report</p><p style="margin-top:4px">Generated: '+fd(now())+'</p></div>');
 
 if(type==='emp'){
 var emp=emps.find(function(e){return e.id===id});if(!emp){w.document.close();return}
@@ -906,7 +906,7 @@ ea.forEach(function(a,si){var sop=sops.find(function(s){return s.code===a.sc});v
 var stTxt=st==='passed'?'COMPETENT':st==='locked'?'LOCKED':st==='progress'?'IN PROGRESS':'OUTSTANDING';
 w.document.write('<tr>'+(si===0?'<td rowspan="'+ea.length+'">'+emp.id+'</td><td rowspan="'+ea.length+'">'+emp.name+'</td><td rowspan="'+ea.length+'">'+emp.idn+'</td><td rowspan="'+ea.length+'">'+emp.gender+'</td><td rowspan="'+ea.length+'">'+emp.site+'</td><td rowspan="'+ea.length+'">'+emp.dept+'</td>':'')+'<td>'+a.sc+'</td><td class="'+(st==='passed'?'pass':st==='locked'?'fail':'')+'">'+stTxt+'</td><td>'+(pr?pr.pct+'%':att.length?att[att.length-1].pct+'%':'-')+'</td><td>100%</td><td>'+att.length+'/3</td><td>'+(pr?fd(pr.dt):'-')+'</td></tr>');});});
 w.document.write('</tbody></table>');}
-w.document.write('<div class="ftr"><p><b>One Mining (Pty) Ltd</b> — Training Management System</p><p>Generated '+fd(now())+' | Confidential — For compliance use only</p></div></body></html>');
+w.document.write('<div class="ftr"><p><b>'+BRAND.legal+'</b> — Training Management System</p><p>Generated '+fd(now())+' | Confidential — For compliance use only</p></div></body></html>');
 w.document.close();setTimeout(function(){w.print()},500);}
 
 // One Mining Training Demo — TNA/Competence build

@@ -87,7 +87,7 @@ function printCompliance(){
   });
   var w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html><head><title>Compliance Report</title><style>body{font-family:Arial;color:#243034;padding:30px}h1{font-size:1.4rem}.gold{color:#FBB227}table{width:100%;border-collapse:collapse;font-size:.78rem;margin-top:10px}th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left}th{background:#243034;color:#fff;font-size:.7rem;text-transform:uppercase}@media print{button{display:none}}</style></head><body>');
-  w.document.write('<div style="text-align:center;border-bottom:4px solid #FBB227;padding-bottom:10px;margin-bottom:12px"><h1>One <span class="gold">Mining</span> — Compliance Report</h1></div>');
+  w.document.write('<div style="text-align:center;border-bottom:4px solid #FBB227;padding-bottom:10px;margin-bottom:12px"><h1>'+BRAND.name+' — Compliance Report</h1></div>');
   w.document.write('<p style="font-size:.85rem"><b>Filter:</b> '+filt.join(' · ')+'<br><b>Generated:</b> '+fd(now())+'</p>');
   w.document.write('<p style="font-size:.85rem"><b>Summary:</b> '+cc.competent+' Competent · '+cc.notcompetent+' Not yet competent · '+cc.notcompleted+' Not yet completed · '+cc.noset+' No job set · Total '+list.length+'</p>');
   w.document.write('<table><thead><tr><th>Emp#</th><th>Name</th><th>Site</th><th>Dept</th><th>Job Title</th><th>Competent</th><th>Status</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" style="text-align:center">No matches</td></tr>')+'</tbody></table>');
@@ -739,7 +739,7 @@ function isCompetent(eid){ var req=empRequired(eid); for(var i=0;i<req.length;i+
 
 function renderManagerShell(){
   var mgr=user.mgr; var nm=user.name||'Manager';
-  var sb='<aside class="sb"><div class="sb-brand"><h2>One <span class="gold">Mining</span></h2><p>Compliance · '+(user.role==='training'?'Training Dept':'Manager')+'</p></div><div class="sb-nav">';
+  var sb='<aside class="sb"><div class="sb-brand"><div class="sb-logo"><img src="'+BRAND.logo+'" alt=""></div><h2>'+BRAND.name+'</h2><p>'+(user.role==='training'?'Training Dept':'Manager')+'</p></div><div class="sb-nav">';
   sb+='<div class="ni a" onclick="mgrEmp=null;render()">📋 Compliance Report</div>';
   sb+='</div><div class="sb-u"><div class="nm">'+nm+'</div><div class="rl">'+(mgr&&mgr.allAccess?'All sites':'Scoped access')+'</div><div class="ni" style="margin-top:8px;padding:8px 0" onclick="doLogout()">← Sign Out</div></div></aside>';
   var mc='<main class="mc">'+(mgrEmp?renderManagerEmp(mgrEmp):renderManagerReport())+'</main>';
@@ -919,13 +919,13 @@ function empTNAReport(eid){
   });
   var w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html><head><title>Individual TNA - '+e.name+'</title><style>*{box-sizing:border-box}body{font-family:Arial;color:#243034;padding:30px;max-width:1040px;margin:0 auto}.hdr{text-align:center;border-bottom:4px solid #FBB227;padding-bottom:14px;margin-bottom:16px}.hdr h1{font-size:1.5rem;font-weight:800}.gold{color:#FBB227}.ttl{text-align:center;font-size:1.1rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:12px 0}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:.78rem}th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left}th{background:#243034;color:#fff;font-size:.7rem;text-transform:uppercase}.info td{border:1px solid #e5e7eb;padding:7px 10px;font-size:.85rem}.info td:nth-child(odd){background:#f8f9fa;font-weight:700;width:150px;text-transform:uppercase;font-size:.7rem;color:#6B7280}.leg{display:flex;gap:14px;flex-wrap:wrap;margin:12px 0;font-size:.76rem}.leg span{padding:4px 10px;border-radius:4px;font-weight:700}.ftr{margin-top:22px;padding-top:10px;border-top:2px solid #FBB227;font-size:.7rem;color:#6B7280;text-align:center}@media print{button{display:none}}</style></head><body>');
-  w.document.write('<div class="hdr"><h1>One <span class="gold">Mining</span></h1><p>Training Management System</p></div><div class="ttl">Individual Training Needs Analysis (TNA)</div>');
+  w.document.write('<div class="hdr"><h1>'+BRAND.name+'</h1><p>Training Management System</p></div><div class="ttl">Individual Training Needs Analysis (TNA)</div>');
   w.document.write('<table class="info"><tr><td>Employee Name</td><td>'+e.name+'</td><td>Employee No.</td><td>'+e.id+'</td></tr><tr><td>ID Number</td><td>'+(e.idn||'-')+'</td><td>Gender</td><td>'+(e.gender||'-')+'</td></tr><tr><td>Site</td><td>'+(e.site||'-')+'</td><td>Department</td><td>'+(e.dept||'-')+'</td></tr><tr><td>Job Title</td><td>'+(jt||'(not set)')+'</td><td>Job Group</td><td>'+((prof&&prof.group)||'-')+'</td></tr><tr><td>Date Generated</td><td>'+fd(now())+'</td><td>Total Interventions</td><td>'+req.length+'</td></tr><tr><td>Mine Induction</td><td>'+(typeof indStatusText==='function'?indStatusText(eid):'-')+'</td><td>Induction Status</td><td>'+((typeof indCompetent==='function'&&indCompetent(eid))?'COMPLETE':'IN PROGRESS')+'</td></tr></table>');
   w.document.write('<div class="leg"><span style="background:'+GRN+';color:'+GRNT+'">Competent</span><span style="background:'+YEL+';color:'+YELT+'">To be done / Next due</span><span style="background:'+RED+';color:'+REDT+'">Overdue / Not competent</span></div>');
   w.document.write('<p style="font-size:.82rem"><b>Summary:</b> '+nC+' competent · '+nDue+' to be done · '+nOver+' overdue/not competent</p>');
   w.document.write('<table><thead><tr><th>Code</th><th>Training Intervention</th><th>Programme</th><th>Frequency</th><th>Status</th><th>Completed</th><th>Next Due</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" style="text-align:center">No training allocated — set a job title for this employee.</td></tr>')+'</tbody></table>');
   w.document.write('<div style="margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:40px"><div style="border-top:2px solid #243034;padding-top:6px;font-size:.76rem">Employee Signature / Date</div><div style="border-top:2px solid #243034;padding-top:6px;font-size:.76rem">Training Officer / Date</div></div>');
-  w.document.write('<div class="ftr">One Mining (Pty) Ltd — Individual TNA · Generated '+fd(now())+' · Confidential</div>');
+  w.document.write('<div class="ftr">'+BRAND.legal+' — Individual TNA · Generated '+fd(now())+' · Confidential</div>');
   w.document.write('<div style="text-align:center;margin-top:16px"><button onclick="window.print()" style="padding:10px 28px;background:#FBB227;border:none;border-radius:8px;font-weight:700;cursor:pointer">🖨 Print / Save as PDF</button></div>');
   w.document.close();
 }
