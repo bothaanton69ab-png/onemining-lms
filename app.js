@@ -3,7 +3,7 @@ function gid(){return Math.random().toString(36).substr(2,9)}
 function now(){return new Date().toISOString()}
 function fd(d){if(!d)return'-';return new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}
 function bg(t,c){var m={gold:'b-gd',green:'b-gn',red:'b-rd',blue:'b-bl',gray:'b-gy'};return'<span class="b '+(m[c]||'b-gy')+'">'+t+'</span>'}
-var onboarding=[], acks=[], activeOnb=null;
+var onboarding=[], acks=[], activeOnb=null, libSearch='', libCat='';
 function cleanStr(s){return(s||'').replace(/[^\x20-\x7E]/g,'').trim()}
 
 // Data variables (loaded from Supabase on init)
@@ -212,6 +212,7 @@ sb+='<div class="sb-sec">MONITOR & COMPLIANCE</div>';
 sb+='<div class="ni'+(page==='comp'?' a':'')+'" onclick="goPage(\'comp\')">🎯 Competence</div>';
 sb+='<div class="ni'+(page==='expiry'?' a':'')+'" onclick="goPage(\'expiry\')">⏰ Expiry & Renewals</div>';
 sb+='<div class="ni'+(page==='reports'?' a':'')+'" onclick="goPage(\'reports\')">📈 Reports</div>';
+sb+='<div class="ni'+(page==='onbproof'?' a':'')+'" onclick="goPage(\'onbproof\')">🤝 Onboarding Proof</div>';
 sb+='<div class="ni'+(page==='anot'?' a':'')+'" onclick="goPage(\'anot\')">🔔 Notifications'+(notifs.length?' '+bg(notifs.length,'gold'):'')+' </div>';
 sb+='<div class="ni'+(page==='audit'?' a':'')+'" onclick="goPage(\'audit\')">📜 Audit Log</div>';
 sb+='<div class="ni'+(page==='soparch'?' a':'')+'" onclick="goPage(\'soparch\')">🗄️ Training Archive</div>';}
@@ -234,6 +235,7 @@ else if(page==='mind'&&isA)mc+=renderManageInduction();
 else if(page==='myind'&&!isA)mc+=renderMyInduction();
 else if(page==='onboard'&&!isA)mc+=(activeOnb?renderOnbItem():renderOnboarding());
 else if(page==='monb'&&isA)mc+=renderMOnb();
+else if(page==='onbproof'&&isA)mc+=renderOnbProof();
 else if(page==='mint'&&isA)mc+=renderInterventions();
 else if(page==='mjp'&&isA)mc+=renderJobProfiles();
 else if(page==='expiry'&&isA)mc+=renderExpiry();
@@ -353,22 +355,41 @@ var isA=user.role==='admin';
 if(!isA && !indCompetent(user.id)) return '<div class="topbar"><h1>My Competency</h1></div><div class="pc"><div class="card"><div class="cb" style="text-align:center;padding:34px"><div style="font-size:2.2rem">🔒</div><h2 style="margin:8px 0">Complete your Mine Induction first</h2><p style="color:#6B7280;max-width:520px;margin:0 auto 16px">Your job-specific training unlocks once your Mine Induction is complete. This is a legal requirement — no person may perform work on the mine until induction is done.</p><button class="btn btn-p" style="width:auto;padding:11px 30px" onclick="goPage(\'myind\')">Go to Mine Induction</button></div></div></div>';
 var h='<div class="topbar"><h1>'+(isA?'Training Library':'My Competency')+'</h1></div><div class="pc">';
 var ea=isA?null:getEmpAssigns(user.id);
-var showSops=isA?sops:sops.filter(function(s){return ea.some(function(a){return a.sc===s.code})});
-if(!isA&&!showSops.length)return h+'<div class="card"><div class="cb"><p style="text-align:center;color:#6B7280;padding:24px">No training assigned yet. Contact your administrator.</p></div></div></div>';
-h+='<div class="card"><div class="cb"><input placeholder="Search training by name or code..." value="'+(typeof libSearch!=="undefined"?(libSearch||"").replace(/"/g,"&quot;"):"")+'" onchange="libSearch=this.value;render()" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div></div>';
-if(typeof libSearch!=="undefined"&&libSearch){var lq=libSearch.toLowerCase();showSops=showSops.filter(function(s){return ((s.code||"")+" "+(s.title||"")+" "+(s.cat||"")).toLowerCase().indexOf(lq)>=0;});}
+var baseSops=isA?sops:sops.filter(function(s){return ea.some(function(a){return a.sc===s.code})});
+if(!isA&&!baseSops.length)return h+'<div class="card"><div class="cb"><p style="text-align:center;color:#6B7280;padding:24px">No training assigned yet. Contact your administrator.</p></div></div></div>';
+var q=(typeof libSearch!=="undefined"?(libSearch||""):"");
+var cats=[]; baseSops.forEach(function(s){ if(s.cat&&cats.indexOf(s.cat)<0)cats.push(s.cat); }); cats.sort();
+h+='<div class="card"><div class="cb">';
+h+='<input id="lib-search" placeholder="🔎 Search subject, code or title, then press Enter — e.g. waste, env, SOP" value="'+q.replace(/"/g,"&quot;")+'" onchange="libSearch=this.value;render()" onkeydown="if(event.key===\'Enter\'){libSearch=this.value;render()}" style="width:100%;padding:11px 14px;border:2px solid #e2e5e9;border-radius:8px;font-size:.95rem">';
+if(cats.length){h+='<div style="margin-top:12px">';
+h+='<span style="cursor:pointer;display:inline-flex;padding:6px 13px;border-radius:20px;font-size:.8rem;font-weight:600;margin:0 8px 8px 0;border:1.5px solid '+(!libCat?'#FBB227':'#d7dbe0')+';background:'+(!libCat?'#FBB227':'#fff')+';color:'+(!libCat?'#243034':'#4b5563')+'" onclick="libCat=\'\';render()">All</span>';
+cats.forEach(function(c){ var sel=libCat===c; h+='<span style="cursor:pointer;display:inline-flex;padding:6px 13px;border-radius:20px;font-size:.8rem;font-weight:600;margin:0 8px 8px 0;border:1.5px solid '+(sel?'#FBB227':'#d7dbe0')+';background:'+(sel?'#FBB227':'#fff')+';color:'+(sel?'#243034':'#4b5563')+'" onclick="libPick(\''+encodeURIComponent(c)+'\')">'+c+'</span>'; });
+h+='</div>';}
+if(q||libCat)h+='<div style="margin-top:6px;font-size:.78rem;color:#6B7280">Showing matches'+(libCat?' in <b>'+libCat+'</b>':'')+(q?' for "<b>'+q.replace(/</g,'&lt;')+'</b>"':'')+' · <span style="color:#FBB227;cursor:pointer;font-weight:600" onclick="libSearch=\'\';libCat=\'\';render()">clear</span></div>';
+h+='</div></div>';
+var showSops=baseSops.slice();
+if(libCat) showSops=showSops.filter(function(s){return s.cat===libCat;});
+if(q){var lq=q.toLowerCase();showSops=showSops.filter(function(s){return ((s.code||"")+" "+(s.title||"")+" "+(s.cat||"")+" "+(s.desc||"")).toLowerCase().indexOf(lq)>=0;});}
+if(!showSops.length)return h+'<div class="card"><div class="cb" style="text-align:center;color:#6B7280;padding:24px">Nothing matches. Try another word or clear the filter.</div></div></div>';
+var groups={},order=[];
+showSops.forEach(function(s){ var k=s.cat||'Uncategorised'; if(!groups[k]){groups[k]=[];order.push(k);} groups[k].push(s); });
+order.sort();
+order.forEach(function(k){
+h+='<div style="display:flex;align-items:center;gap:10px;margin:20px 4px 10px"><h3 style="font-size:.95rem;color:#243034">'+k+'</h3><span class="b b-gy">'+groups[k].length+'</span><div style="flex:1;height:1px;background:#e5e7eb"></div></div>';
 h+='<div class="spg">';
-showSops.forEach(function(s){
+groups[k].forEach(function(s){
 var ps=!isA&&hasPassed(user.id,s.code);var lk=!isA&&isLocked(user.id,s.code);
 var att=!isA?getAtt(user.id,s.code):[];
 var ca=isA||canAccess(user.id,s.code);
 var locked=!isA&&!ca;
-h+='<div class="spc'+(locked?' locked':'')+'" onclick="'+(locked?'alert(\'Complete the previous training first\')':'openSop(\''+s.id+'\')')+'"><div class="cd">'+(locked?'🔒 ':'')+s.code+' · '+s.rev+'</div><h4>'+s.title+'</h4><p>'+s.desc+'</p>';
+h+='<div class="spc'+(locked?' locked':'')+'" onclick="'+(locked?'alert(\'Complete the previous training first\')':'openSop(\''+s.id+'\')')+'"><div class="cd">'+(locked?'🔒 ':'')+s.code+' · '+s.rev+'</div><h4>'+s.title+'</h4><p>'+(s.desc||'')+'</p>';
 h+='<div class="mt">'+bg(s.cat,'blue')+bg(s.qs.length+' Qs','gray')+bg(s.site,'gray');
 if(!isA){if(ps)h+=bg('✓ Completed','green');else if(lk)h+=bg('Locked','red');else if(locked)h+=bg('🔒 Complete Previous','gray');else if(att.length)h+=bg(att.length+'/3','gold');}
 h+='</div></div>';
 });
-h+='</div></div>';return h;
+h+='</div>';
+});
+return h+'</div>';
 }
 // === SOP VIEWER ===
 function renderSopView(){
@@ -1026,3 +1047,47 @@ function delOnb(id){if(!confirm('Delete this onboarding item? Employee acknowled
 function moveOnb(id,dir){var items=onboarding.slice().sort(function(a,b){return (a.order||0)-(b.order||0);});var i=items.findIndex(function(x){return x.id===id;});var j=i+dir;if(j<0||j>=items.length)return;var a=items[i],b=items[j];var ao=(a.order||0),bo=(b.order||0);a.order=bo;b.order=ao;save();render();}
 function uploadOnbDoc(id){var inp=document.createElement('input');inp.type='file';inp.accept='.pdf';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;if(f.size>50*1024*1024){alert('Max 50MB. Please compress or split the PDF.');return;}var path='onboarding/'+id+'_'+Date.now()+'_'+f.name;var r=await sb.storage.from('lms-files').upload(path,f);if(r.error){alert('Upload failed: '+r.error.message);return;}var u=sb.storage.from('lms-files').getPublicUrl(path);var o=onboarding.find(function(x){return x.id===id;});o.docUrl=u.data.publicUrl;o.docName=f.name;await save();render();alert('Document uploaded.');};inp.click();}
 function uploadOnbVid(id){var inp=document.createElement('input');inp.type='file';inp.accept='video/*';inp.onchange=async function(e){var f=e.target.files[0];if(!f)return;if(f.size>100*1024*1024){alert('Max 100MB. For larger videos, upload to YouTube and paste the link.');return;}var path='onboarding-vid/'+id+'_'+Date.now()+'_'+f.name;var r=await sb.storage.from('lms-files').upload(path,f);if(r.error){alert('Upload failed: '+r.error.message);return;}var u=sb.storage.from('lms-files').getPublicUrl(path);var o=onboarding.find(function(x){return x.id===id;});o.vidUrl=u.data.publicUrl;o.vidName=f.name;await save();render();alert('Video uploaded.');};inp.click();}
+
+// ---------- library category picker ----------
+function libPick(v){ try{ libCat=decodeURIComponent(v); }catch(e){ libCat=v; } render(); }
+
+// ---------- ADMIN: Onboarding acknowledgement proof ----------
+var onbProofSel=null;
+function renderOnbProof(){
+var items=onboarding.slice().sort(function(a,b){return (a.order||0)-(b.order||0);});
+var h='<div class="topbar"><h1>Onboarding Proof</h1></div><div class="pc">';
+h+='<div class="card"><div class="cb"><b>Acknowledgement register.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">Proof of who has received and acknowledged each company / HR policy, with the date. Click a policy to see the full list and print it as evidence.</p></div></div>';
+if(!items.length)return h+'<div class="card"><div class="cb" style="text-align:center;color:#6B7280;padding:24px">No onboarding items yet.</div></div></div>';
+h+='<div class="card"><div class="ch"><h3>Overview</h3></div><div class="tw"><table><thead><tr><th>Policy / Document</th><th>Applies to</th><th>Acknowledged</th><th>Outstanding</th><th>%</th><th></th></tr></thead><tbody>';
+items.forEach(function(o){
+var appl=emps.filter(function(e){return onbVisible(o,e.id);});
+var ackd=appl.filter(function(e){return onbAcked(e.id,o.id);}).length;
+var pct=appl.length?Math.round(ackd/appl.length*100):0;
+h+='<tr><td style="font-weight:600">'+o.title+(o.active===false?' '+bg('Off','gray'):'')+'</td><td style="font-size:.78rem">'+onbAudienceLabel(o)+'</td><td style="font-weight:700">'+ackd+'</td><td>'+(appl.length-ackd)+'</td><td>'+bg(pct+'%',pct>=100?'green':pct>0?'gold':'gray')+'</td><td><button class="btn btn-o btn-sm" onclick="onbProofSel=\''+o.id+'\';render()">View</button></td></tr>';
+});
+h+='</tbody></table></div></div>';
+if(onbProofSel){var o=onboarding.find(function(x){return x.id===onbProofSel;});
+if(o){var appl=emps.filter(function(e){return onbVisible(o,e.id);});
+appl.sort(function(a,b){return (onbAcked(b.id,o.id)?1:0)-(onbAcked(a.id,o.id)?1:0);});
+h+='<div class="card"><div class="ch" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3>'+o.title+' — acknowledgement list</h3><div style="display:flex;gap:8px"><button class="btn btn-p btn-sm" onclick="printOnbProof(\''+o.id+'\')">🖨 Print / Save PDF</button><button class="btn btn-o btn-sm" onclick="onbProofSel=null;render()">Close</button></div></div><div class="tw"><table><thead><tr><th>Emp#</th><th>Name</th><th>Site</th><th>Dept</th><th>Status</th><th>Date acknowledged</th></tr></thead><tbody>';
+appl.forEach(function(e){var ok=onbAcked(e.id,o.id);var rec=onbAckRec(e.id,o.id);
+h+='<tr><td style="font-weight:700;color:#FBB227">'+e.id+'</td><td>'+e.name+'</td><td style="font-size:.8rem">'+e.site+'</td><td style="font-size:.8rem">'+(e.dept||'-')+'</td><td>'+(ok?bg('✓ Acknowledged','green'):bg('Outstanding','gold'))+'</td><td>'+(ok?fd(rec.at):'-')+'</td></tr>';
+});
+if(!appl.length)h+='<tr><td colspan="6" style="text-align:center;color:#6B7280;padding:18px">No employees fall under this item.</td></tr>';
+h+='</tbody></table></div></div>';}}
+return h+'</div>';
+}
+function printOnbProof(oid){
+var o=onboarding.find(function(x){return x.id===oid;}); if(!o)return;
+var appl=emps.filter(function(e){return onbVisible(o,e.id);});
+appl.sort(function(a,b){return (onbAcked(b.id,o.id)?1:0)-(onbAcked(a.id,o.id)?1:0);});
+var rows=appl.map(function(e){var ok=onbAcked(e.id,o.id);var rec=onbAckRec(e.id,o.id);return '<tr><td>'+e.id+'</td><td>'+e.name+'</td><td>'+e.site+'</td><td>'+(e.dept||'-')+'</td><td>'+(ok?'Acknowledged':'Outstanding')+'</td><td>'+(ok?fd(rec.at):'-')+'</td></tr>';}).join('');
+var ackd=appl.filter(function(e){return onbAcked(e.id,o.id);}).length;
+var w=window.open('','_blank'); if(!w)return;
+w.document.write('<!DOCTYPE html><html><head><title>'+BRAND.name+' — Onboarding Proof</title><style>body{font-family:Arial;padding:26px;color:#243034}h1{font-size:18px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}th{background:#243034;color:#fff}.ftr{margin-top:16px;font-size:11px;color:#666}</style></head><body>');
+w.document.write('<h1>'+BRAND.name+' — Onboarding Acknowledgement Proof</h1>');
+w.document.write('<p><b>Policy:</b> '+o.title+'<br><b>Acknowledged:</b> '+ackd+' of '+appl.length+'<br><b>Generated:</b> '+fd(now())+'</p>');
+w.document.write('<table><thead><tr><th>Emp#</th><th>Name</th><th>Site</th><th>Dept</th><th>Status</th><th>Date</th></tr></thead><tbody>'+rows+'</tbody></table>');
+w.document.write('<div class="ftr">'+o.title+' — official acknowledgement register. Retain for compliance.</div></body></html>');
+w.document.close(); w.focus(); w.print();
+}

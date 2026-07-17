@@ -18,7 +18,6 @@ var tnaFilterProg = 'all', tnaSearch = '', jpEdit = null, compEmp = null, compSe
 var compSites=[], compDepts=[], mgrSites=[], mgrDepts=[], mgrSearch='', expSites=[], expDepts=[], expSearch='';
 var libSearch='', jpSearch='', sopArchive=[];
 var crSites=[], crDepts=[], crStatuses=[];
-var progList=[], catList=[], taxEditP=null, taxEditC=null;
 var iaInts=[], iaSites=[], iaDepts=[], iaEmps=[];
 var meSites=[], meDepts=[], meSearch='', erSites=[], erDepts=[], erSearch='';
 function getDueBy(eid,code){ var a=xassigns.filter(function(x){return x.eid===eid&&x.code===code&&x.type==='add'&&x.active!==false&&x.dueBy;}); return a.length?a[0].dueBy:null; }
@@ -142,8 +141,6 @@ function filterBar(srcEmps, sitesVar, deptsVar, searchVar){
 async function tnaLoad(){
   interventions = await cloudLoad('interventions', []);
   jobprofiles   = await cloudLoad('jobprofiles', []);
-  progList      = await cloudLoad('programme_list', defaultProgList());
-  catList       = await cloudLoad('category_list', defaultCatList());
   xassigns      = await cloudLoad('xassigns', []);
   comp          = await cloudLoad('comp', []);
   auditLog      = await cloudLoad('audit', []);
@@ -155,8 +152,6 @@ async function saveTNA(){
   var r = await Promise.all([
     cloudSave('interventions', interventions),
     cloudSave('jobprofiles', jobprofiles),
-    cloudSave('programme_list', progList),
-    cloudSave('category_list', catList),
     cloudSave('xassigns', xassigns),
     cloudSave('comp', comp),
     cloudSave('audit', auditLog),
@@ -186,7 +181,7 @@ function addMonths(iso, m){ var d=new Date(iso); d.setMonth(d.getMonth()+m); ret
 function daysBetween(iso){ if(!iso) return null; var ms=new Date(iso)-new Date(); return Math.floor(ms/86400000); }
 function getIntervention(code){ for(var i=0;i<interventions.length;i++) if(interventions[i].code===code) return interventions[i]; return null; }
 function getProfile(title){ for(var i=0;i<jobprofiles.length;i++) if(jobprofiles[i].title===title) return jobprofiles[i]; return null; }
-function programmes(){ var s=[]; progList.filter(function(p){return p.active!==false;}).slice().sort(_byOrder).forEach(function(p){ if(s.indexOf(p.name)<0)s.push(p.name); }); interventions.forEach(function(it){ if(it.programme&&s.indexOf(it.programme)<0)s.push(it.programme); }); return s; }
+function programmes(){ var s=[]; interventions.forEach(function(it){ if(it.programme&&s.indexOf(it.programme)<0)s.push(it.programme); }); return s; }
 
 // completion status for an employee+intervention
 function compStatus(eid, code){
@@ -372,21 +367,20 @@ function renderInterventions(){
     if(tnaSearch){ var q=tnaSearch.toLowerCase(); if((it.code+' '+it.name).toLowerCase().indexOf(q)<0) return false; }
     return true;
   });
-  h+='<div class="card"><div class="tw"><table><thead><tr><th>Code</th><th>Name</th><th>Programme</th><th>Category</th><th>Critical</th><th>Validity / Frequency</th><th>Linked course</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+  h+='<div class="card"><div class="tw"><table><thead><tr><th>Code</th><th>Name</th><th>Programme</th><th>Critical</th><th>Validity / Frequency</th><th>Linked course</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
   list.slice(0,400).forEach(function(it){
     h+='<tr'+(it.active===false?' style="opacity:.55"':'')+'>';
     h+='<td style="font-weight:700;color:#FBB227">'+it.code+'</td>';
     h+='<td>'+(it.name||'<i style=color:#9ca3af>(unnamed)</i>')+(it.critical?' '+bg('Critical','red'):'')+'</td>';
     h+='<td style="font-size:.78rem">'+it.programme+'</td>';
-    h+='<td style="font-size:.78rem">'+(it.category||'-')+'</td>';
     h+='<td>'+(it.critical?'Yes':'-')+'</td>';
     h+='<td>'+bg(validityLabel(it.validityMonths), it.validityMonths==null?'gray':'blue')+'</td>';
     h+='<td style="font-size:.78rem">'+(it.linkedSop?bg(it.linkedSop,'green'):(it.sopAvailable?bg('SOP avail (link)','gold'):bg('Tracked','gray')))+'</td>';
     h+='<td>'+(it.active===false?bg('Retired','red'):bg('Active','green'))+'</td>';
     h+='<td style="white-space:nowrap"><button class="btn btn-o btn-sm" onclick="editIntervention(\''+it.code+'\')">Edit</button></td></tr>';
   });
-  if(list.length>400) h+='<tr><td colspan="9" style="text-align:center;color:#6B7280">Showing first 400 of '+list.length+' — use search/filter</td></tr>';
-  if(!list.length) h+='<tr><td colspan="9" style="text-align:center;color:#6B7280;padding:24px">No interventions. Import your TNA first.</td></tr>';
+  if(list.length>400) h+='<tr><td colspan="8" style="text-align:center;color:#6B7280">Showing first 400 of '+list.length+' — use search/filter</td></tr>';
+  if(!list.length) h+='<tr><td colspan="8" style="text-align:center;color:#6B7280;padding:24px">No interventions. Import your TNA first.</td></tr>';
   return h+'</tbody></table></div></div></div>';
 }
 function editIntervention(code){
@@ -398,8 +392,6 @@ function editIntervention(code){
   ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
   var m='<div class="mdl"><div class="mh"><h2>'+it.code+'</h2><button class="btn btn-o btn-sm" onclick="document.getElementById(\'iv-ov\').remove()">Close</button></div><div class="mbd">';
   m+='<div class="fg"><label>Name</label><input id="iv-name" value="'+(it.name||'').replace(/"/g,'&quot;')+'"></div>';
-  m+='<div class="fg"><label>Programme</label>'+progSelect('iv-prog',it.programme||'')+'</div>';
-  m+='<div class="fg"><label>Category (subject)</label>'+catSelect('iv-cat',it.category||'')+'</div>';
   m+='<div class="fg"><label>Validity / Frequency (when it expires & must be redone)</label><select id="iv-vm"><option value="">Not set</option>'+
      vOpt(0,'Once-off (no expiry)')+vOpt(12,'Annual')+vOpt(24,'2-yearly')+vOpt(36,'3-yearly')+vOpt(-1,'As required')+'</select></div>';
   m+='<div class="fg"><label>Linked in-app course (document/video/slides/assessment)</label><select id="iv-sop">'+sopOpts+'</select></div>';
@@ -415,7 +407,7 @@ function saveIntervention(code){
   var vmRaw=document.getElementById('iv-vm').value; var vm=vmRaw===''?null:parseInt(vmRaw);
   var sopV=document.getElementById('iv-sop').value||null;
   var before={name:it.name, validityMonths:it.validityMonths, linkedSop:it.linkedSop};
-  it.name=nm; it.validityMonths=vm; it.linkedSop=sopV; var _pv=document.getElementById('iv-prog'); if(_pv&&_pv.value)it.programme=_pv.value; var _cv=document.getElementById('iv-cat'); if(_cv)it.category=_cv.value;
+  it.name=nm; it.validityMonths=vm; it.linkedSop=sopV;
   logAudit('EDIT INTERVENTION', code, '', before, {name:nm, validityMonths:vm, linkedSop:sopV});
   saveTNA().then(function(){ var ov=document.getElementById('iv-ov'); if(ov)ov.remove(); render(); });
 }
@@ -432,8 +424,7 @@ function addInterventionNew(){
   var m='<div class="mdl"><div class="mh"><h2>New Intervention</h2><button class="btn btn-o btn-sm" onclick="document.getElementById(\'iv-ov\').remove()">Close</button></div><div class="mbd">';
   m+='<div class="fg"><label>Code</label><input id="niv-code" placeholder="e.g. OM-EXTRA-001"></div>';
   m+='<div class="fg"><label>Name</label><input id="niv-name"></div>';
-  m+='<div class="fg"><label>Programme</label>'+progSelect('niv-prog','')+'</div>';
-  m+='<div class="fg"><label>Category (subject)</label>'+catSelect('niv-cat','')+'</div>';
+  m+='<div class="fg"><label>Programme</label><input id="niv-prog" list="niv-progs" placeholder="e.g. MINING SOPs"><datalist id="niv-progs">'+progs.map(function(p){return '<option value="'+p.replace(/"/g,'&quot;')+'">';}).join('')+'</datalist></div>';
   m+='<div class="fg"><label>Validity / Frequency</label><select id="niv-vm"><option value="">Not set</option><option value="0">Once-off (no expiry)</option><option value="12">Annual</option><option value="24">2-yearly</option><option value="36">3-yearly</option><option value="-1">As required</option></select></div>';
   m+='<div class="fg"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="niv-crit"> Critical</label></div>';
   m+='<div class="fg"><label>Linked in-app course (optional)</label><select id="niv-sop">'+sopOpts+'</select></div>';
@@ -446,7 +437,7 @@ function saveNewIntervention(){
   if(getIntervention(code)){ alert('That code already exists'); return; }
   var vmRaw=document.getElementById('niv-vm').value; var vm=vmRaw===''?null:parseInt(vmRaw);
   var sopV=document.getElementById('niv-sop').value||null;
-  interventions.push({code:code, name:document.getElementById('niv-name').value.trim(), ref:'', programme:document.getElementById('niv-prog').value||'(Manual)', category:document.getElementById('niv-cat').value||'', sopAvailable:!!sopV, critical:document.getElementById('niv-crit').checked, freq:'', validityMonths:vm, linkedSop:sopV, active:true, retiredAt:null, createdAt:now(), manual:true});
+  interventions.push({code:code, name:document.getElementById('niv-name').value.trim(), ref:'', programme:document.getElementById('niv-prog').value.trim()||'(Manual)', sopAvailable:!!sopV, critical:document.getElementById('niv-crit').checked, freq:'', validityMonths:vm, linkedSop:sopV, active:true, retiredAt:null, createdAt:now(), manual:true});
   logAudit('ADD INTERVENTION', code, 'manual');
   saveTNA().then(function(){ var ov=document.getElementById('iv-ov'); if(ov)ov.remove(); render(); });
 }
@@ -994,77 +985,3 @@ function doIAssign(){
   logAudit('BULK ASSIGN', added+' assignment(s) to '+targets.length+' people: '+iaInts.join(', '), reason+(dueISO?' · due '+fd(dueISO):''));
   saveTNA().then(function(){ alert(added+' assignment(s) created across '+targets.length+' people.'+(dueISO?'\nComplete-by: '+fd(dueISO):'')); iaInts=[];iaSites=[];iaDepts=[];iaEmps=[]; render(); });
 }
-
-// =====================  PROGRAMME + CATEGORY TAXONOMY  =====================
-function _byOrder(a,b){ return (a.order||0)-(b.order||0); }
-function defaultProgList(){ return [
- {id:gid(),name:'Policy',code:'POL',desc:'Company policies — the highest-level rules everyone follows.',active:true,order:1},
- {id:gid(),name:'MCOP',code:'MCOP',desc:'Mandatory Codes of Practice issued under the MHSA.',active:true,order:2},
- {id:gid(),name:'Company Procedure',code:'CP',desc:'Company procedures that give effect to policies and codes.',active:true,order:3},
- {id:gid(),name:'SOP',code:'SOP',desc:'Safe/standard operating procedures for specific tasks.',active:true,order:4},
- {id:gid(),name:'Additional Training',code:'ADD',desc:'Other required training not covered above.',active:true,order:5},
- {id:gid(),name:'Skills Training',code:'SKL',desc:'Competency and skills development.',active:true,order:6}
-]; }
-function defaultCatList(){ return [
- {id:gid(),name:'Environmental',code:'ENV',desc:'Water, air, dust, waste, heritage.',active:true,order:1},
- {id:gid(),name:'Trackless Mobile Machinery',code:'TMM',desc:'Mobile machines, traffic, pedestrian safety.',active:true,order:2},
- {id:gid(),name:'Explosives & Blasting',code:'EXP',desc:'Explosives handling and blasting.',active:true,order:3},
- {id:gid(),name:'Occupational Health',code:'OH',desc:'Health, hygiene, fitness for work.',active:true,order:4},
- {id:gid(),name:'Emergency Preparedness',code:'EMG',desc:'Emergency response, evacuation, first aid.',active:true,order:5},
- {id:gid(),name:'HIRA / Risk',code:'RISK',desc:'Hazard identification and risk assessment.',active:true,order:6},
- {id:gid(),name:'Security',code:'SEC',desc:'Access control, protection of people and assets.',active:true,order:7},
- {id:gid(),name:'Engineering',code:'ENG',desc:'Mechanical, electrical, isolation, maintenance.',active:true,order:8},
- {id:gid(),name:'SHE Representatives',code:'SHEREP',desc:'SHE reps and committee duties.',active:true,order:9},
- {id:gid(),name:'Contractor Management',code:'CON',desc:'Contractors and service providers.',active:true,order:10},
- {id:gid(),name:'Leadership',code:'LEAD',desc:'Supervision, leadership and consequence management.',active:true,order:11},
- {id:gid(),name:'Legal & Statutory',code:'LEG',desc:'Legal appointments and statutory requirements.',active:true,order:12},
- {id:gid(),name:'HR & Wellbeing',code:'HR',desc:'HR policies, wellness, GBVF.',active:true,order:13},
- {id:gid(),name:'General',code:'GEN',desc:'General awareness and induction-type content.',active:true,order:14}
-]; }
-function catNames(){ var s=[]; catList.filter(function(c){return c.active!==false;}).slice().sort(_byOrder).forEach(function(c){ if(s.indexOf(c.name)<0)s.push(c.name); }); interventions.forEach(function(it){ if(it.category&&s.indexOf(it.category)<0)s.push(it.category); }); if(typeof sops!=='undefined')sops.forEach(function(sp){ if(sp.cat&&s.indexOf(sp.cat)<0)s.push(sp.cat); }); return s; }
-
-function progSelect(id,cur){ var h='<select id="'+id+'"><option value="">— choose —</option>'; programmes().forEach(function(p){ h+='<option'+(cur===p?' selected':'')+'>'+p+'</option>'; }); return h+'</select>'; }
-function catSelect(id,cur){ var h='<select id="'+id+'"><option value="">— choose —</option>'; catNames().forEach(function(c){ h+='<option'+(cur===c?' selected':'')+'>'+c+'</option>'; }); return h+'</select>'; }
-
-// ---------- admin tab: Programmes & Categories ----------
-function renderTax(){
-  var h='<div class="topbar"><h1>Programmes &amp; Categories</h1></div><div class="pc">';
-  h+='<div class="card"><div class="cb"><b>Your training taxonomy.</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">Two managed lists used across the whole system. <b>Programme</b> is the document type in order of authority (Policy, MCOP, Company Procedure, SOP, then training). <b>Category</b> is the subject area (Environmental, TMM, Explosives, and so on). Every intervention and every training item is tagged with one of each, so people can filter and find things fast.</p></div></div>';
-  h+=renderTaxSection('prog','Programmes','Programme',progList);
-  h+=renderTaxSection('cat','Categories','Category',catList);
-  return h+'</div>';
-}
-function renderTaxSection(kind,title,noun,list){
-  var editId=(kind==='prog')?taxEditP:taxEditC;
-  var items=list.slice().sort(_byOrder);
-  var h='<div class="card"><div class="ch"><h3>'+title+'</h3></div><div class="cb">';
-  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">';
-  h+='<div style="flex:2;min-width:180px"><label style="font-size:.76rem;font-weight:600">Name</label><input id="tx-'+kind+'-name" placeholder="'+noun+' name" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div>';
-  h+='<div style="flex:1;min-width:90px"><label style="font-size:.76rem;font-weight:600">Code</label><input id="tx-'+kind+'-code" placeholder="Short" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div>';
-  h+='<div style="flex:3;min-width:200px"><label style="font-size:.76rem;font-weight:600">Description</label><input id="tx-'+kind+'-desc" placeholder="Optional" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div>';
-  h+='<button class="btn btn-p" style="width:auto" onclick="taxAdd(\''+kind+'\')">+ Add</button></div>';
-  h+='<div class="tw"><table><thead><tr><th style="width:90px">Order</th><th>Name</th><th>Code</th><th>Description</th><th>Status</th><th>Manage</th></tr></thead><tbody>';
-  if(!items.length)h+='<tr><td colspan="6" style="text-align:center;color:#6B7280;padding:18px">None yet. Add your first above.</td></tr>';
-  items.forEach(function(o){
-    if(editId===o.id){
-      h+='<tr><td colspan="6" style="background:#fff8ec"><div style="padding:6px 2px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">';
-      h+='<div style="flex:2;min-width:160px"><label style="font-size:.72rem;font-weight:600">Name</label><input id="txe-'+kind+'-name" value="'+(o.name||'').replace(/"/g,'&quot;')+'" style="width:100%;padding:8px 10px;border:2px solid #e2e5e9;border-radius:8px"></div>';
-      h+='<div style="flex:1;min-width:80px"><label style="font-size:.72rem;font-weight:600">Code</label><input id="txe-'+kind+'-code" value="'+(o.code||'').replace(/"/g,'&quot;')+'" style="width:100%;padding:8px 10px;border:2px solid #e2e5e9;border-radius:8px"></div>';
-      h+='<div style="flex:3;min-width:200px"><label style="font-size:.72rem;font-weight:600">Description</label><input id="txe-'+kind+'-desc" value="'+(o.desc||'').replace(/"/g,'&quot;')+'" style="width:100%;padding:8px 10px;border:2px solid #e2e5e9;border-radius:8px"></div>';
-      h+='<div style="display:flex;gap:8px"><button class="btn btn-p btn-sm" style="width:auto" onclick="taxSaveEdit(\''+kind+'\',\''+o.id+'\')">Save</button><button class="btn btn-o btn-sm" style="width:auto" onclick="'+(kind==='prog'?'taxEditP':'taxEditC')+'=null;render()">Cancel</button></div>';
-      h+='</div></td></tr>';
-    }else{
-      h+='<tr'+(o.active===false?' style="opacity:.55"':'')+'><td style="white-space:nowrap"><button class="btn btn-o btn-sm" onclick="taxMove(\''+kind+'\',\''+o.id+'\',-1)">↑</button> <button class="btn btn-o btn-sm" onclick="taxMove(\''+kind+'\',\''+o.id+'\',1)">↓</button></td>';
-      h+='<td style="font-weight:600">'+o.name+'</td><td><span class="b b-gy">'+(o.code||'-')+'</span></td><td style="font-size:.82rem;color:#4b5563">'+(o.desc||'')+'</td>';
-      h+='<td>'+(o.active!==false?bg('Active','green'):bg('Off','gray'))+'</td>';
-      h+='<td style="white-space:nowrap"><button class="btn btn-o btn-sm" onclick="'+(kind==='prog'?'taxEditP':'taxEditC')+'=\''+o.id+'\';render()">✎ Edit</button> <button class="btn btn-o btn-sm" onclick="taxToggle(\''+kind+'\',\''+o.id+'\')">'+(o.active!==false?'Turn off':'Turn on')+'</button> <button class="btn btn-d btn-sm" onclick="taxDel(\''+kind+'\',\''+o.id+'\')">Delete</button></td></tr>';
-    }
-  });
-  return h+'</tbody></table></div></div></div>';
-}
-function _taxList(kind){ return kind==='prog'?progList:catList; }
-function taxAdd(kind){ var n=document.getElementById('tx-'+kind+'-name').value.trim(); if(!n){alert('Enter a name.');return;} var list=_taxList(kind); var mo=list.reduce(function(m,o){return Math.max(m,o.order||0);},0); list.push({id:gid(),name:n,code:document.getElementById('tx-'+kind+'-code').value.trim(),desc:document.getElementById('tx-'+kind+'-desc').value.trim(),active:true,order:mo+1}); saveTNA().then(function(){render();}); }
-function taxSaveEdit(kind,id){ var o=_taxList(kind).find(function(x){return x.id===id;}); if(!o)return; o.name=document.getElementById('txe-'+kind+'-name').value.trim()||o.name; o.code=document.getElementById('txe-'+kind+'-code').value.trim(); o.desc=document.getElementById('txe-'+kind+'-desc').value.trim(); if(kind==='prog')taxEditP=null; else taxEditC=null; saveTNA().then(function(){render();}); }
-function taxToggle(kind,id){ var o=_taxList(kind).find(function(x){return x.id===id;}); if(!o)return; o.active=(o.active===false); saveTNA().then(function(){render();}); }
-function taxDel(kind,id){ if(!confirm('Delete this '+(kind==='prog'?'programme':'category')+'? Items already tagged with it keep the text; it just stops appearing in the dropdowns.'))return; if(kind==='prog')progList=progList.filter(function(x){return x.id!==id;}); else catList=catList.filter(function(x){return x.id!==id;}); saveTNA().then(function(){render();}); }
-function taxMove(kind,id,dir){ var items=_taxList(kind).slice().sort(_byOrder); var i=items.findIndex(function(x){return x.id===id;}); var j=i+dir; if(j<0||j>=items.length)return; var a=items[i],b=items[j]; var ao=(a.order||0),bo=(b.order||0); a.order=bo; b.order=ao; saveTNA().then(function(){render();}); }
