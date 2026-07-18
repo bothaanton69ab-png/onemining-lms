@@ -22,6 +22,7 @@ var libSearch='', jpSearch='', sopArchive=[];
 var crSites=[], crDepts=[], crStatuses=[];
 var crType='all', crMgr=[], crCo=[];
 var progList=[], catList=[], taxEditP=null, taxEditC=null;
+var departments=[], deptEditId=null;
 var iaInts=[], iaSites=[], iaDepts=[], iaEmps=[];
 var meType='all';
 var meSites=[], meDepts=[], meSearch='', erSites=[], erDepts=[], erSearch='';
@@ -159,6 +160,7 @@ async function tnaLoad(){
   interventions = await cloudLoad('interventions', []);
   jobprofiles   = await cloudLoad('jobprofiles', []);
   progList      = await cloudLoad('programme_list', defaultProgList());
+  departments   = await cloudLoad('departments', defaultDepartments());
   catList       = await cloudLoad('category_list', defaultCatList());
   xassigns      = await cloudLoad('xassigns', []);
   comp          = await cloudLoad('comp', []);
@@ -172,6 +174,7 @@ async function saveTNA(){
     cloudSave('interventions', interventions),
     cloudSave('jobprofiles', jobprofiles),
     cloudSave('programme_list', progList),
+    cloudSave('departments', departments),
     cloudSave('category_list', catList),
     cloudSave('xassigns', xassigns),
     cloudSave('comp', comp),
@@ -1174,3 +1177,61 @@ function contractorFilterRow(typeVar,coVar){
   return h+'</div>';
 }
 function contractorFilter(list,typeVar,coVar){ var ty=window[typeVar]||'all'; var coArr=window[coVar]||[]; return list.filter(function(e){ if(ty==='employee'&&e.contractor)return false; if(ty==='contractor'&&!e.contractor)return false; if(coArr.length&&coArr.indexOf(e.coName||'')<0)return false; return true; }); }
+
+// =====================  DEPARTMENTS & DISCIPLINES (from Document Control)  =====================
+function defaultDepartments(){
+  var d=[
+    ['Safety, Health, Environment, Risk & Quality',['Safety','Occupational Hygiene','Occupational Health / Medical','Environment','Risk Management','Quality','Incident Management','Fire & Emergency','Ventilation','Contractor Management','SHE Training & Awareness','Assurance & Audit']],
+    ['Mining',['Drilling','Blasting','Explosives','Surface / Open-pit Mining','Underground Mining','Loading & Hauling','Production','Grade Control','Mine Closure & Rehabilitation']],
+    ['Engineering',['Mechanical','Electrical','Instrumentation & Control','Trackless Mobile Machinery','Lifting Machinery & Tackle','Workshops & Services','Pumps & Dewatering','Asset Management']],
+    ['Processing / Plant',['Metallurgy','Plant Production','Process Control','Maintenance & Reliability','Laboratory','Tailings & Residue']],
+    ['Technical Services',['Geology','Survey','Mine Planning','Rock Engineering','Exploration','Resource & Reserve']],
+    ['Human Resources',['Recruitment & Staffing','Training & Development','Employee Relations','Remuneration & Benefits','Payroll & Time','Health & Wellness','Talent Management','Organisational Development']],
+    ['Finance',['Accounting','Budgeting','Financial Planning & Analysis','Taxation','Internal Audit','Governance & Compliance','Enterprise Risk','Fixed Assets']],
+    ['Commercial / Supply Chain',['Procurement','Contract Management','Supply Chain','Materials & Stores','Enterprise & Supplier Development','Imports & Exports']],
+    ['Logistics',['Transport','Dispatch','Weighbridge','Traffic Control','Truck Staging']],
+    ['Development (SLP)',['Social & Labour Plan','Local Economic Development','Community Engagement','Corporate Social Investment','Human Resource Development (SLP)','Housing & Living Conditions']],
+    ['Legal & Compliance',['Legal','Compliance','Regulatory Affairs','Governance','Enterprise Risk & Assurance']],
+    ['Corporate Affairs',['Communications','Stakeholder Engagement','Crisis & Reputation']],
+    ['Information & Communication Technology',['IT Infrastructure','Applications','Data & Reporting','Cyber Security']],
+    ['Security',['Physical Security','Access Control','Investigations']]
+  ];
+  return d.map(function(x,i){ return {id:gid(), name:x[0], disciplines:x[1].slice(), order:i+1}; });
+}
+function deptNames(){ return departments.slice().sort(_byOrder).map(function(d){return d.name;}); }
+function getDept(name){ return departments.find(function(d){return d.name===name;}); }
+function disciplinesFor(name){ var d=getDept(name); return d?(d.disciplines||[]).slice():[]; }
+function renderDepartments(){
+  var h='<div class="topbar"><h1>Departments &amp; Disciplines</h1></div><div class="pc">';
+  h+='<div class="card"><div class="cb"><b>Your organisation structure (from Document Control).</b><p style="color:#6B7280;font-size:.85rem;margin-top:4px">Manage the departments and the disciplines under each. This list feeds the <b>Department</b> and <b>Discipline</b> pickers on every employee and contractor, and drives the filters and reports. Update it here whenever the structure changes — existing people keep whatever they are already tagged with.</p></div></div>';
+  h+='<div class="card"><div class="ch"><h3>Add a department</h3></div><div class="cb" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="flex:2;min-width:220px"><label style="font-size:.76rem;font-weight:600">Department name</label><input id="dep-new" placeholder="e.g. Mining" style="width:100%;padding:9px 12px;border:2px solid #e2e5e9;border-radius:8px"></div><button class="btn btn-p" style="width:auto" onclick="addDept()">+ Add department</button></div></div>';
+  var items=departments.slice().sort(_byOrder);
+  if(!items.length)h+='<div class="card"><div class="cb" style="text-align:center;color:#6B7280;padding:20px">No departments yet. Add your first above.</div></div>';
+  items.forEach(function(d){
+    h+='<div class="card"><div class="cb">';
+    h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">';
+    h+='<button class="btn btn-o btn-sm" onclick="deptMove(\''+d.id+'\',-1)">↑</button><button class="btn btn-o btn-sm" onclick="deptMove(\''+d.id+'\',1)">↓</button>';
+    if(deptEditId===d.id){
+      h+='<input id="dep-edit-'+d.id+'" value="'+(d.name||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:200px;padding:8px 10px;border:2px solid #FBB227;border-radius:8px;font-weight:700">';
+      h+='<button class="btn btn-p btn-sm" onclick="saveRenameDept(\''+d.id+'\')">Save</button><button class="btn btn-o btn-sm" onclick="deptEditId=null;render()">Cancel</button>';
+    } else {
+      h+='<h3 style="flex:1;min-width:200px;margin:0">'+d.name+' <span class="b b-gy">'+(d.disciplines||[]).length+'</span></h3>';
+      h+='<button class="btn btn-o btn-sm" onclick="deptEditId=\''+d.id+'\';render()">✎ Rename</button><button class="btn btn-d btn-sm" onclick="delDept(\''+d.id+'\')">Delete</button>';
+    }
+    h+='</div>';
+    h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">';
+    (d.disciplines||[]).forEach(function(dis,di){ h+='<span style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;background:#f1f5f9;border:1px solid #e2e8f0;font-size:.82rem">'+dis+' <span style="cursor:pointer;color:#EF4444;font-weight:700" onclick="delDisc(\''+d.id+'\','+di+')">✕</span></span>'; });
+    if(!(d.disciplines||[]).length)h+='<span style="color:#9ca3af;font-size:.82rem">No disciplines yet.</span>';
+    h+='</div>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end"><input id="dep-disc-'+d.id+'" placeholder="Add a discipline..." onkeydown="if(event.key===\'Enter\')addDisc(\''+d.id+'\')" style="flex:1;min-width:200px;padding:8px 10px;border:2px solid #e2e5e9;border-radius:8px"><button class="btn btn-o btn-sm" onclick="addDisc(\''+d.id+'\')">+ Add discipline</button></div>';
+    h+='</div></div>';
+  });
+  return h+'</div>';
+}
+function addDept(){ var n=(document.getElementById('dep-new')||{}).value; n=(n||'').trim(); if(!n){alert('Enter a department name.');return;} if(getDept(n)){alert('That department already exists.');return;} var mo=departments.reduce(function(m,o){return Math.max(m,o.order||0);},0); departments.push({id:gid(),name:n,disciplines:[],order:mo+1}); if(typeof logAudit==='function')logAudit('DEPARTMENT ADDED',n,''); saveTNA().then(function(){render();}); }
+function delDept(id){ var d=departments.find(function(x){return x.id===id;}); if(!d)return; if(!confirm('Delete department "'+d.name+'" and its disciplines? People already tagged keep their text.'))return; if(typeof logAudit==='function')logAudit('DEPARTMENT DELETED',d.name,''); departments=departments.filter(function(x){return x.id!==id;}); saveTNA().then(function(){render();}); }
+function saveRenameDept(id){ var d=departments.find(function(x){return x.id===id;}); if(!d)return; var v=(document.getElementById('dep-edit-'+id)||{}).value; v=(v||'').trim(); if(!v){alert('Name cannot be empty.');return;} d.name=v; deptEditId=null; if(typeof logAudit==='function')logAudit('DEPARTMENT RENAMED',v,''); saveTNA().then(function(){render();}); }
+function addDisc(id){ var d=departments.find(function(x){return x.id===id;}); if(!d)return; var el=document.getElementById('dep-disc-'+id); var v=el?el.value.trim():''; if(!v){alert('Enter a discipline.');return;} d.disciplines=d.disciplines||[]; if(d.disciplines.indexOf(v)>=0){alert('That discipline is already listed.');return;} d.disciplines.push(v); saveTNA().then(function(){render();}); }
+function delDisc(id,idx){ var d=departments.find(function(x){return x.id===id;}); if(!d)return; (d.disciplines||[]).splice(idx,1); saveTNA().then(function(){render();}); }
+function deptMove(id,dir){ var items=departments.slice().sort(_byOrder); var i=items.findIndex(function(x){return x.id===id;}); if(i<0)return; var j=i+dir; if(j<0||j>=items.length)return; var a=items[i],b=items[j]; var ao=a.order||0,bo=b.order||0; a.order=bo; b.order=ao; saveTNA().then(function(){render();}); }
+
